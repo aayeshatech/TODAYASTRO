@@ -240,32 +240,71 @@ def generate_report(symbol, date, kp_data):
         st.error(f"Error generating report: {str(e)}")
         return None
 
+def test_telegram_connection():
+    """Test Telegram bot connectivity"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            bot_info = response.json()
+            return True, f"✅ Bot connected: {bot_info['result']['first_name']}"
+        else:
+            return False, f"❌ Bot connection failed: {response.status_code}"
+    except Exception as e:
+        return False, f"❌ Connection test failed: {str(e)}"
+
 def send_to_telegram(message):
     """Send message to Telegram with comprehensive error handling"""
+    # Clean message for Telegram
+    cleaned_message = message.replace('`', '').replace('*', '').replace('_', '')
+    
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    
+    # Try without parse_mode first
     payload = {
         'chat_id': CHAT_ID,
-        'text': message,
-        'parse_mode': 'Markdown'
+        'text': cleaned_message
     }
     
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            return True, "Message sent successfully!"
+        # Log the attempt
+        logging.info(f"Sending to Telegram - Chat ID: {CHAT_ID}")
         
-        error_info = response.json().get('description', 'Unknown error')
-        return False, f"Telegram API Error: {error_info}"
+        response = requests.post(url, json=payload, timeout=15)
+        
+        # Debug response
+        logging.info(f"Response status: {response.status_code}")
+        logging.info(f"Response content: {response.text}")
+        
+        if response.status_code == 200:
+            return True, "✅ Message sent successfully to Telegram!"
+        else:
+            error_data = response.json() if response.content else {}
+            error_desc = error_data.get('description', 'Unknown error')
+            error_code = error_data.get('error_code', response.status_code)
+            
+            # Common error solutions
+            if 'chat not found' in error_desc.lower():
+                return False, f"❌ Chat not found. Make sure bot is added to the group/channel. Error: {error_desc}"
+            elif 'forbidden' in error_desc.lower():
+                return False, f"❌ Bot forbidden. Check bot permissions in the group. Error: {error_desc}"
+            elif 'invalid' in error_desc.lower():
+                return False, f"❌ Invalid token or chat ID. Error: {error_desc}"
+            else:
+                return False, f"❌ Telegram API Error ({error_code}): {error_desc}"
             
     except requests.exceptions.Timeout:
         logging.error("Telegram API timeout")
-        return False, "Error: Request timeout. Check your internet connection."
+        return False, "❌ Request timeout. Check your internet connection."
+    except requests.exceptions.ConnectionError:
+        logging.error("Telegram connection error")
+        return False, "❌ Cannot connect to Telegram. Check internet connection."
     except requests.exceptions.RequestException as e:
-        logging.error(f"Telegram connection error: {str(e)}")
-        return False, f"Connection Error: {str(e)}"
+        logging.error(f"Telegram request error: {str(e)}")
+        return False, f"❌ Request Error: {str(e)}"
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
-        return False, f"Unexpected Error: {str(e)}"
+        return False, f"❌ Unexpected Error: {str(e)}"
 
 # ========== Streamlit UI ==========
 def main():
