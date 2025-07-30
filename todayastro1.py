@@ -329,8 +329,11 @@ def send_to_telegram(message):
         # Split into chunks if too long
         return send_long_message(message)
     
-    # Clean message for Telegram
+    # Clean message for Telegram - more aggressive cleaning
     cleaned_message = message.replace('`', '').replace('*', '').replace('_', '')
+    cleaned_message = cleaned_message.replace('🚀', 'ROCKET').replace('✅', '[GOOD]').replace('⚠️', '[WARN]')
+    cleaned_message = cleaned_message.replace('🔸', '[NEUTRAL]').replace('🔹', '[STRATEGY]')
+    cleaned_message = cleaned_message.replace('📈', '[UP]').replace('📉', '[DOWN]').replace('🔄', '[MIXED]').replace('🎯', '[TARGET]')
     
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     
@@ -341,34 +344,49 @@ def send_to_telegram(message):
     }
     
     try:
-        # Log the attempt
-        logging.info(f"Sending message - Length: {len(cleaned_message)} chars")
+        # Log the exact request being sent
+        logging.info(f"=== TELEGRAM REQUEST ===")
+        logging.info(f"URL: {url}")
+        logging.info(f"Chat ID: {CHAT_ID}")
+        logging.info(f"Message length: {len(cleaned_message)}")
+        logging.info(f"Message preview: {cleaned_message[:100]}...")
+        logging.info(f"Full payload: {payload}")
         
         response = requests.post(url, json=payload, timeout=15)
         
-        # Debug response
-        logging.info(f"Response status: {response.status_code}")
-        logging.info(f"Response content: {response.text}")
+        # Log the complete response
+        logging.info(f"=== TELEGRAM RESPONSE ===")
+        logging.info(f"Status Code: {response.status_code}")
+        logging.info(f"Headers: {dict(response.headers)}")
+        logging.info(f"Raw Response: {response.text}")
         
         if response.status_code == 200:
-            return True, "✅ Message sent successfully to Telegram!"
+            response_json = response.json()
+            if response_json.get('ok'):
+                message_id = response_json.get('result', {}).get('message_id', 'Unknown')
+                logging.info(f"SUCCESS: Message sent with ID {message_id}")
+                return True, f"✅ Message sent successfully! (ID: {message_id})"
+            else:
+                logging.error(f"Telegram returned OK=false: {response_json}")
+                return False, f"❌ Telegram returned error: {response_json.get('description', 'Unknown error')}"
         else:
             error_data = response.json() if response.content else {}
             error_desc = error_data.get('description', 'Unknown error')
             error_code = error_data.get('error_code', response.status_code)
             
             # Log the full error for debugging
-            logging.error(f"Telegram error: {error_desc}")
+            logging.error(f"HTTP {response.status_code}: {error_desc}")
+            logging.error(f"Full error response: {response.text}")
             
             # Common error solutions
             if 'message is too long' in error_desc.lower():
                 return send_long_message(message)
             elif 'chat not found' in error_desc.lower():
-                return False, f"❌ Chat not found. Make sure bot is added to the group/channel. Error: {error_desc}"
+                return False, f"❌ Chat not found. Error: {error_desc}"
             elif 'forbidden' in error_desc.lower():
-                return False, f"❌ Bot forbidden. Check bot permissions in the group. Error: {error_desc}"
-            elif 'invalid' in error_desc.lower():
-                return False, f"❌ Invalid token or chat ID. Error: {error_desc}"
+                return False, f"❌ Bot forbidden. Error: {error_desc}"
+            elif 'bad request' in error_desc.lower():
+                return False, f"❌ Bad request. Error: {error_desc}"
             else:
                 return False, f"❌ Telegram API Error ({error_code}): {error_desc}"
             
@@ -384,6 +402,84 @@ def send_to_telegram(message):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         return False, f"❌ Unexpected Error: {str(e)}"
+
+def send_to_telegram_get(message):
+    """Send message using GET method like browser test"""
+    import urllib.parse
+    
+    # Clean and encode message for URL
+    cleaned_message = message.replace('🚀', 'ROCKET').replace('✅', '[GOOD]').replace('⚠️', '[WARN]')
+    cleaned_message = cleaned_message.replace('🔸', '[NEUTRAL]').replace('🔹', '[STRATEGY]')
+    cleaned_message = cleaned_message.replace('📈', '[UP]').replace('📉', '[DOWN]').replace('🔄', '[MIXED]').replace('🎯', '[TARGET]')
+    
+    # URL encode the message
+    encoded_message = urllib.parse.quote(cleaned_message)
+    
+    # Build URL like the manual test
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={encoded_message}"
+    
+    try:
+        logging.info(f"=== TELEGRAM GET REQUEST ===")
+        logging.info(f"URL: {url[:200]}...")  # Log first 200 chars of URL
+        logging.info(f"Message length: {len(cleaned_message)}")
+        
+        response = requests.get(url, timeout=15)
+        
+        logging.info(f"=== GET RESPONSE ===")
+        logging.info(f"Status: {response.status_code}")
+        logging.info(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            response_json = response.json()
+            if response_json.get('ok'):
+                message_id = response_json.get('result', {}).get('message_id', 'Unknown')
+                return True, f"✅ GET method success! (ID: {message_id})"
+            else:
+                return False, f"❌ GET method failed: {response_json.get('description', 'Unknown')}"
+        else:
+            return False, f"❌ GET HTTP {response.status_code}: {response.text}"
+            
+    except Exception as e:
+        logging.error(f"GET method error: {str(e)}")
+        return False, f"❌ GET method error: {str(e)}"
+
+def send_to_telegram_simple_post(message):
+    """Send message using simple POST like successful tests"""
+    # Use the exact same cleaning as successful test messages
+    cleaned_message = str(message).strip()
+    
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    
+    # Use form data instead of JSON (like some working examples)
+    payload = {
+        'chat_id': str(CHAT_ID),
+        'text': cleaned_message
+    }
+    
+    try:
+        logging.info(f"=== SIMPLE POST REQUEST ===")
+        logging.info(f"Payload: {payload}")
+        
+        # Try form data instead of JSON
+        response = requests.post(url, data=payload, timeout=15)
+        
+        logging.info(f"=== SIMPLE POST RESPONSE ===")
+        logging.info(f"Status: {response.status_code}")
+        logging.info(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            response_json = response.json()
+            if response_json.get('ok'):
+                message_id = response_json.get('result', {}).get('message_id', 'Unknown')
+                return True, f"✅ Simple POST success! (ID: {message_id})"
+            else:
+                return False, f"❌ Simple POST failed: {response_json.get('description', 'Unknown')}"
+        else:
+            return False, f"❌ Simple POST HTTP {response.status_code}: {response.text}"
+            
+    except Exception as e:
+        logging.error(f"Simple POST error: {str(e)}")
+        return False, f"❌ Simple POST error: {str(e)}"
 
 def send_long_message(message):
     """Split and send long messages"""
@@ -705,35 +801,53 @@ def main():
                 with col1:
                     if st.button("📱 Send Full Report", key="send_full"):
                         with st.spinner("Sending full report..."):
+                            st.info("🔍 Sending with detailed logging...")
                             success, message = send_to_telegram(clean_report)
+                            
+                            # Show the result
                             if success:
                                 st.balloons()
                                 st.success(f"✅ {message}")
+                                st.info("💡 **Check your Telegram channel now!**")
                             else:
-                                st.error(f"❌ Failed: {message}")
+                                st.error(f"❌ **Send Failed:** {message}")
                                 
-                                # Show raw error for debugging
-                                st.code(f"Raw error: {message}")
+                                # Show what was attempted to send
+                                st.error("**What we tried to send:**")
+                                st.text_area("Failed message content:", clean_report[:500], height=100)
+                                
+                                # Show log file location
+                                st.info("📝 **Check the log file 'astro_trading.log' for detailed Telegram API response**")
                 
                 with col2:
                     # Send just the title as test
-                    title_only = f"🚀 Aayeshatech Alert | {symbol.upper()} | {selected_date.strftime('%B %d, %Y')}"
+                    title_only = f"ROCKET Aayeshatech Alert | {symbol.upper()} | {selected_date.strftime('%B %d, %Y')}"
                     if st.button("📝 Send Title Only", key="send_title"):
-                        title_success, title_msg = send_to_telegram(title_only)
-                        if title_success:
-                            st.success("✅ Title sent!")
-                        else:
-                            st.error(f"❌ Title failed: {title_msg}")
+                        with st.spinner("Sending title..."):
+                            title_success, title_msg = send_to_telegram(title_only)
+                            if title_success:
+                                st.success(f"✅ {title_msg}")
+                            else:
+                                st.error(f"❌ Title failed: {title_msg}")
                 
                 with col3:
-                    # Send first 500 chars only
-                    short_report = clean_report[:500] + "...\n\n[Report truncated for testing]"
-                    if st.button("✂️ Send Short Version", key="send_short"):
-                        short_success, short_msg = send_to_telegram(short_report)
-                        if short_success:
-                            st.success("✅ Short version sent!")
-                        else:
-                            st.error(f"❌ Short failed: {short_msg}")
+                    # Ultra simple test
+                    ultra_simple = f"GOLD Report {selected_date.strftime('%Y-%m-%d')} Ready"
+                    if st.button("🔤 Ultra Simple", key="send_ultra"):
+                        with st.spinner("Sending ultra simple..."):
+                            ultra_success, ultra_msg = send_to_telegram(ultra_simple)
+                            if ultra_success:
+                                st.success(f"✅ {ultra_msg}")
+                            else:
+                                st.error(f"❌ Ultra simple failed: {ultra_msg}")
+                
+                # Add manual URL test
+                st.subheader("🔧 Manual API Test")
+                if st.button("🌐 Test Direct API Call"):
+                    test_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text=Manual%20API%20Test%20{datetime.now().strftime('%H:%M:%S')}"
+                    st.info("**Manual test URL (try in browser):**")
+                    st.code(test_url)
+                    st.info("If this works in browser, the issue is in our Python code. If not, it's a Telegram setup issue.")
                 
                 # Download option
                 st.download_button(
