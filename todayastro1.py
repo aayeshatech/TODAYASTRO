@@ -796,58 +796,120 @@ def main():
                 else:
                     clean_report = report
                 
+                # Character analysis section
+                st.subheader("🔍 Report Content Analysis")
+                
+                # Show first few lines
+                report_lines = clean_report.split('\n')
+                st.write("**Report broken down by lines:**")
+                for i, line in enumerate(report_lines[:10]):  # Show first 10 lines
+                    st.write(f"Line {i+1}: `{repr(line)}`")
+                
+                # Test sending line by line
+                st.subheader("📝 Line-by-Line Testing")
+                
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    if st.button("📱 Send Full Report", key="send_full"):
-                        with st.spinner("Sending full report..."):
-                            st.info("🔍 Sending with detailed logging...")
-                            success, message = send_to_telegram(clean_report)
-                            
-                            # Show the result
-                            if success:
-                                st.balloons()
-                                st.success(f"✅ {message}")
-                                st.info("💡 **Check your Telegram channel now!**")
-                            else:
-                                st.error(f"❌ **Send Failed:** {message}")
-                                
-                                # Show what was attempted to send
-                                st.error("**What we tried to send:**")
-                                st.text_area("Failed message content:", clean_report[:500], height=100)
-                                
-                                # Show log file location
-                                st.info("📝 **Check the log file 'astro_trading.log' for detailed Telegram API response**")
+                    if st.button("🔤 Send Title Line", key="send_title_line"):
+                        title_line = report_lines[0] if report_lines else "No title"
+                        success, msg = send_to_telegram(title_line)
+                        if success:
+                            st.success(f"✅ Title line sent!")
+                        else:
+                            st.error(f"❌ Title line failed: {msg}")
                 
                 with col2:
-                    # Send just the title as test
-                    title_only = f"ROCKET Aayeshatech Alert | {symbol.upper()} | {selected_date.strftime('%B %d, %Y')}"
-                    if st.button("📝 Send Title Only", key="send_title"):
-                        with st.spinner("Sending title..."):
-                            title_success, title_msg = send_to_telegram(title_only)
-                            if title_success:
-                                st.success(f"✅ {title_msg}")
-                            else:
-                                st.error(f"❌ Title failed: {title_msg}")
+                    if st.button("📊 Send First 3 Lines", key="send_first_3"):
+                        first_3 = '\n'.join(report_lines[:3])
+                        success, msg = send_to_telegram(first_3)
+                        if success:
+                            st.success(f"✅ First 3 lines sent!")
+                        else:
+                            st.error(f"❌ First 3 failed: {msg}")
                 
                 with col3:
-                    # Ultra simple test
-                    ultra_simple = f"GOLD Report {selected_date.strftime('%Y-%m-%d')} Ready"
-                    if st.button("🔤 Ultra Simple", key="send_ultra"):
-                        with st.spinner("Sending ultra simple..."):
-                            ultra_success, ultra_msg = send_to_telegram(ultra_simple)
-                            if ultra_success:
-                                st.success(f"✅ {ultra_msg}")
-                            else:
-                                st.error(f"❌ Ultra simple failed: {ultra_msg}")
+                    if st.button("🧪 Send Plain Text Version", key="send_plain"):
+                        # Super aggressive cleaning
+                        plain_version = clean_report
+                        # Remove all special characters except basic ones
+                        import re
+                        plain_version = re.sub(r'[^\w\s\-\.\:\|\(\)]+', '', plain_version)
+                        plain_version = re.sub(r'\s+', ' ', plain_version)  # Multiple spaces to single
+                        
+                        success, msg = send_to_telegram(plain_version[:500])  # Only first 500 chars
+                        if success:
+                            st.success(f"✅ Plain version sent!")
+                        else:
+                            st.error(f"❌ Plain version failed: {msg}")
                 
-                # Add manual URL test
-                st.subheader("🔧 Manual API Test")
-                if st.button("🌐 Test Direct API Call"):
-                    test_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text=Manual%20API%20Test%20{datetime.now().strftime('%H:%M:%S')}"
-                    st.info("**Manual test URL (try in browser):**")
-                    st.code(test_url)
-                    st.info("If this works in browser, the issue is in our Python code. If not, it's a Telegram setup issue.")
+                # Show character analysis
+                with st.expander("🔬 Character Analysis"):
+                    st.write("**Characters in the report:**")
+                    unique_chars = set(clean_report)
+                    problematic_chars = []
+                    
+                    for char in sorted(unique_chars):
+                        char_code = ord(char)
+                        if char_code > 127:  # Non-ASCII
+                            problematic_chars.append(f"'{char}' (code: {char_code})")
+                        
+                    if problematic_chars:
+                        st.warning("**Potentially problematic characters found:**")
+                        st.write(problematic_chars)
+                    else:
+                        st.success("No problematic characters found")
+                    
+                    # Show first 200 chars with escape codes
+                    st.write("**Raw first 200 characters:**")
+                    st.code(repr(clean_report[:200]))
+                
+                # Test with exactly same format as working message
+                st.subheader("🎯 Mirror Successful Format")
+                if st.button("📋 Send Like Diagnostic Format", key="send_diagnostic_format"):
+                    # Use the exact same format as the working diagnostic message
+                    diagnostic_format = f"""DIAGNOSTIC TEST from Aayeshatech Bot
+Time: {datetime.now().strftime('%H:%M:%S')}
+Symbol: {symbol.upper()}
+Date: {selected_date.strftime('%B %d, %Y')}
+Report Length: {len(report)} chars
+[GOOD] Test message format"""
+                    
+                    success, msg = send_to_telegram(diagnostic_format)
+                    if success:
+                        st.success(f"✅ Diagnostic format sent!")
+                        st.info("💡 If this works, we need to reformat the astro report to match this structure")
+                    else:
+                        st.error(f"❌ Diagnostic format failed: {msg}")
+                
+                # Emergency simple astro report
+                if st.button("🚨 Emergency Simple Astro Report", key="emergency_report"):
+                    emergency = f"""AAYESHATECH ASTRO ALERT
+Symbol: {symbol.upper()}
+Date: {selected_date.strftime('%Y-%m-%d')}
+
+BULLISH TIMES:
+- 08:46 AM Moon-Jupiter
+- 09:56 PM Moon-Venus
+
+BEARISH TIMES:  
+- 12:20 PM Moon-Saturn
+- 08:22 PM Moon-Ketu
+
+STRATEGY:
+- Buy dips around morning times
+- Sell rallies after afternoon
+
+RISK LEVEL: MODERATE
+Trade with caution."""
+                    
+                    success, msg = send_to_telegram(emergency)
+                    if success:
+                        st.balloons()
+                        st.success(f"✅ Emergency report sent!")
+                        st.info("💡 Check your Telegram! If this works, we know the format was the issue")
+                    else:
+                        st.error(f"❌ Even emergency report failed: {msg}")
                 
                 # Download option
                 st.download_button(
