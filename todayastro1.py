@@ -298,6 +298,12 @@ def get_bot_permissions():
 
 def send_to_telegram(message):
     """Send message to Telegram with comprehensive error handling"""
+    # Check message length (Telegram limit is 4096 characters)
+    if len(message) > 4096:
+        logging.warning(f"Message too long: {len(message)} characters. Truncating...")
+        # Split into chunks if too long
+        return send_long_message(message)
+    
     # Clean message for Telegram
     cleaned_message = message.replace('`', '').replace('*', '').replace('_', '')
     
@@ -311,7 +317,7 @@ def send_to_telegram(message):
     
     try:
         # Log the attempt
-        logging.info(f"Sending to Telegram - Chat ID: {CHAT_ID}")
+        logging.info(f"Sending message - Length: {len(cleaned_message)} chars")
         
         response = requests.post(url, json=payload, timeout=15)
         
@@ -326,8 +332,13 @@ def send_to_telegram(message):
             error_desc = error_data.get('description', 'Unknown error')
             error_code = error_data.get('error_code', response.status_code)
             
+            # Log the full error for debugging
+            logging.error(f"Telegram error: {error_desc}")
+            
             # Common error solutions
-            if 'chat not found' in error_desc.lower():
+            if 'message is too long' in error_desc.lower():
+                return send_long_message(message)
+            elif 'chat not found' in error_desc.lower():
                 return False, f"❌ Chat not found. Make sure bot is added to the group/channel. Error: {error_desc}"
             elif 'forbidden' in error_desc.lower():
                 return False, f"❌ Bot forbidden. Check bot permissions in the group. Error: {error_desc}"
@@ -348,6 +359,67 @@ def send_to_telegram(message):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         return False, f"❌ Unexpected Error: {str(e)}"
+
+def send_long_message(message):
+    """Split and send long messages"""
+    try:
+        # Split message into chunks of ~3800 characters (leaving room for headers)
+        chunk_size = 3800
+        chunks = []
+        
+        if len(message) <= chunk_size:
+            chunks = [message]
+        else:
+            # Split by lines first to keep formatting
+            lines = message.split('\n')
+            current_chunk = ""
+            
+            for line in lines:
+                if len(current_chunk + line + '\n') <= chunk_size:
+                    current_chunk += line + '\n'
+                else:
+                    if current_chunk:
+                        chunks.append(current_chunk.strip())
+                    current_chunk = line + '\n'
+            
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+        
+        # Send each chunk
+        success_count = 0
+        total_chunks = len(chunks)
+        
+        for i, chunk in enumerate(chunks):
+            if total_chunks > 1:
+                header = f"📊 ASTRO REPORT - Part {i+1}/{total_chunks}\n{'='*40}\n"
+                chunk_with_header = header + chunk
+            else:
+                chunk_with_header = chunk
+            
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = {
+                'chat_id': CHAT_ID,
+                'text': chunk_with_header
+            }
+            
+            response = requests.post(url, json=payload, timeout=15)
+            
+            if response.status_code == 200:
+                success_count += 1
+                # Small delay between messages to avoid rate limiting
+                import time
+                time.sleep(1)
+            else:
+                error_data = response.json() if response.content else {}
+                error_desc = error_data.get('description', 'Unknown error')
+                logging.error(f"Chunk {i+1} failed: {error_desc}")
+                return False, f"❌ Part {i+1} failed: {error_desc}"
+        
+        return True, f"✅ Report sent successfully in {success_count} parts!"
+        
+    except Exception as e:
+        logging.error(f"Long message error: {str(e)}")
+        return False, f"❌ Error splitting message: {str(e)}"
 
 # ========== Streamlit UI ==========
 def main():
@@ -527,13 +599,17 @@ def main():
                 st.markdown(f"```\n{report}\n```")
                 
                 # Show report stats
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.metric("Report Length", f"{len(report)} chars")
                 with col2:
                     st.metric("Lines", f"{report.count(chr(10)) + 1}")
                 with col3:
                     st.metric("Size", f"{len(report.encode('utf-8'))} bytes")
+                with col4:
+                    telegram_limit = 4096
+                    status = "✅ OK" if len(report) <= telegram_limit else "⚠️ Too Long"
+                    st.metric("Telegram Status", status)
                 
                 # Sending options
                 st.subheader("📤 Send Options")
@@ -542,19 +618,34 @@ def main():
                 with col1:
                     if st.button("📱 Send to Telegram", key="send_telegram"):
                         with st.spinner("Sending to Telegram..."):
+                            # Show what we're sending
+                            st.info(f"📊 Sending report ({len(report)} characters)...")
+                            
                             success, message = send_to_telegram(report)
                             if success:
                                 st.balloons()
                                 st.success(message)
-                            else:
-                                st.error(message)
                                 
-                                # Show troubleshooting tips
-                                st.error("**Troubleshooting Tips:**")
-                                st.write("1. Check if bot is added to the channel/group")
-                                st.write("2. Verify bot has 'Send Messages' permission")
-                                st.write("3. Ensure Chat ID is correct (use /start in bot)")
-                                st.write("4. Test connection using sidebar button")
+                                # Show confirmation
+                                st.info("💡 **Check your Telegram channel now!**")
+                                st.write(f"Channel: {CHAT_ID}")
+                                
+                            else:
+                                st.error(f"**Send Failed:** {message}")
+                                
+                                # Show detailed debugging info
+                                st.error("**Debug Information:**")
+                                st.write(f"• Report length: {len(report)} chars")
+                                st.write(f"• Telegram limit: 4096 chars")
+                                st.write(f"• Bot token: Valid")
+                                st.write(f"• Chat ID: {CHAT_ID}")
+                                
+                                # Show troubleshooting
+                                with st.expander("🔧 Troubleshooting Steps"):
+                                    st.write("1. Try the manual test in sidebar")
+                                    st.write("2. Check if message is too long")
+                                    st.write("3. Copy report and send manually")
+                                    st.write("4. Check Telegram channel settings")
                 
                 with col2:
                     # Alternative - Copy to clipboard
