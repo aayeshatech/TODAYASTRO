@@ -144,6 +144,43 @@ def calculate_symbol_influence(symbol, planet, sub_lord):
     
     return base_score
 
+def generate_simple_working_report(symbol, date, kp_data):
+    """Generate report using EXACT format of working diagnostic messages"""
+    try:
+        # Convert input date
+        if isinstance(date, str):
+            date = datetime.strptime(date, '%Y/%m/%d').date()
+        elif isinstance(date, datetime):
+            date = date.date()
+        
+        # Filter for selected date
+        filtered = kp_data[kp_data['DateTime'].dt.date == date].copy()
+        if filtered.empty:
+            return None
+            
+        # Convert times to IST
+        filtered['Time_IST'] = filtered['DateTime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata').dt.strftime('%I:%M %p')
+        
+        # Find best and worst times (simplified)
+        best_time = "08:46 AM"
+        worst_time = "12:20 PM"
+        
+        # Use EXACT same format as working diagnostic message
+        working_format = f"""ASTRO ANALYSIS from Aayeshatech Bot
+Time: {datetime.now().strftime('%H:%M:%S')}
+Symbol: {symbol.upper()}
+Date: {date.strftime('%B %d, %Y')}
+Best: {best_time} Moon-Jupiter
+Worst: {worst_time} Moon-Saturn
+[GOOD] Analysis complete"""
+        
+        return working_format
+        
+    except Exception as e:
+        logging.error(f"Simple report error: {str(e)}")
+        # Fallback to absolute minimum
+        return f"ASTRO ALERT for {symbol.upper()} on {date.strftime('%Y-%m-%d')} [GOOD] Ready"
+
 def generate_report(symbol, date, kp_data):
     """Generate symbol-specific trading report"""
     try:
@@ -403,84 +440,6 @@ def send_to_telegram(message):
         logging.error(f"Unexpected error: {str(e)}")
         return False, f"❌ Unexpected Error: {str(e)}"
 
-def send_to_telegram_get(message):
-    """Send message using GET method like browser test"""
-    import urllib.parse
-    
-    # Clean and encode message for URL
-    cleaned_message = message.replace('🚀', 'ROCKET').replace('✅', '[GOOD]').replace('⚠️', '[WARN]')
-    cleaned_message = cleaned_message.replace('🔸', '[NEUTRAL]').replace('🔹', '[STRATEGY]')
-    cleaned_message = cleaned_message.replace('📈', '[UP]').replace('📉', '[DOWN]').replace('🔄', '[MIXED]').replace('🎯', '[TARGET]')
-    
-    # URL encode the message
-    encoded_message = urllib.parse.quote(cleaned_message)
-    
-    # Build URL like the manual test
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={encoded_message}"
-    
-    try:
-        logging.info(f"=== TELEGRAM GET REQUEST ===")
-        logging.info(f"URL: {url[:200]}...")  # Log first 200 chars of URL
-        logging.info(f"Message length: {len(cleaned_message)}")
-        
-        response = requests.get(url, timeout=15)
-        
-        logging.info(f"=== GET RESPONSE ===")
-        logging.info(f"Status: {response.status_code}")
-        logging.info(f"Response: {response.text}")
-        
-        if response.status_code == 200:
-            response_json = response.json()
-            if response_json.get('ok'):
-                message_id = response_json.get('result', {}).get('message_id', 'Unknown')
-                return True, f"✅ GET method success! (ID: {message_id})"
-            else:
-                return False, f"❌ GET method failed: {response_json.get('description', 'Unknown')}"
-        else:
-            return False, f"❌ GET HTTP {response.status_code}: {response.text}"
-            
-    except Exception as e:
-        logging.error(f"GET method error: {str(e)}")
-        return False, f"❌ GET method error: {str(e)}"
-
-def send_to_telegram_simple_post(message):
-    """Send message using simple POST like successful tests"""
-    # Use the exact same cleaning as successful test messages
-    cleaned_message = str(message).strip()
-    
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    
-    # Use form data instead of JSON (like some working examples)
-    payload = {
-        'chat_id': str(CHAT_ID),
-        'text': cleaned_message
-    }
-    
-    try:
-        logging.info(f"=== SIMPLE POST REQUEST ===")
-        logging.info(f"Payload: {payload}")
-        
-        # Try form data instead of JSON
-        response = requests.post(url, data=payload, timeout=15)
-        
-        logging.info(f"=== SIMPLE POST RESPONSE ===")
-        logging.info(f"Status: {response.status_code}")
-        logging.info(f"Response: {response.text}")
-        
-        if response.status_code == 200:
-            response_json = response.json()
-            if response_json.get('ok'):
-                message_id = response_json.get('result', {}).get('message_id', 'Unknown')
-                return True, f"✅ Simple POST success! (ID: {message_id})"
-            else:
-                return False, f"❌ Simple POST failed: {response_json.get('description', 'Unknown')}"
-        else:
-            return False, f"❌ Simple POST HTTP {response.status_code}: {response.text}"
-            
-    except Exception as e:
-        logging.error(f"Simple POST error: {str(e)}")
-        return False, f"❌ Simple POST error: {str(e)}"
-
 def send_long_message(message):
     """Split and send long messages"""
     try:
@@ -541,43 +500,6 @@ def send_long_message(message):
     except Exception as e:
         logging.error(f"Long message error: {str(e)}")
         return False, f"❌ Error splitting message: {str(e)}"
-
-def generate_simple_working_report(symbol, date, kp_data):
-    """Generate report using EXACT format of working diagnostic messages"""
-    try:
-        # Convert input date
-        if isinstance(date, str):
-            date = datetime.strptime(date, '%Y/%m/%d').date()
-        elif isinstance(date, datetime):
-            date = date.date()
-        
-        # Filter for selected date
-        filtered = kp_data[kp_data['DateTime'].dt.date == date].copy()
-        if filtered.empty:
-            return None
-            
-        # Convert times to IST
-        filtered['Time_IST'] = filtered['DateTime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata').dt.strftime('%I:%M %p')
-        
-        # Find best and worst times (simplified)
-        best_time = "08:46 AM"
-        worst_time = "12:20 PM"
-        
-        # Use EXACT same format as working diagnostic message
-        working_format = f"""ASTRO ANALYSIS from Aayeshatech Bot
-Time: {datetime.now().strftime('%H:%M:%S')}
-Symbol: {symbol.upper()}
-Date: {date.strftime('%B %d, %Y')}
-Best: {best_time} Moon-Jupiter
-Worst: {worst_time} Moon-Saturn
-[GOOD] Analysis complete"""
-        
-        return working_format
-        
-    except Exception as e:
-        logging.error(f"Simple report error: {str(e)}")
-        # Fallback to absolute minimum
-        return f"ASTRO ALERT for {symbol.upper()} on {date.strftime('%Y-%m-%d')} [GOOD] Ready"
 
 # ========== Streamlit UI ==========
 def main():
@@ -700,11 +622,6 @@ def main():
         if symbol != 'DEFAULT':
             st.sidebar.write(f"• {symbol}")
     st.sidebar.write("• Any other symbol (default analysis)")
-    st.sidebar.write("Optimized for:")
-    for symbol in SYMBOL_RULERS.keys():
-        if symbol != 'DEFAULT':
-            st.sidebar.write(f"• {symbol}")
-    st.sidebar.write("• Any other symbol (default analysis)")
     
     # File upload
     uploaded_file = st.file_uploader("Upload KP Astro Data", type="txt")
@@ -805,374 +722,34 @@ def main():
                 # Report generated successfully
                 st.success(f"✅ Report generated! ({len(report)} characters)")
                 
-                # Show the regular report that's been failing
-                st.subheader("📋 Generated Report (Been Failing)")
-                st.text_area("Failed Report:", report, height=150)
+                # Show the report
+                st.subheader("📋 Generated Report")
+                st.text_area("Report:", report, height=200)
                 
-                # NEW: Show the working format side by side
-                st.subheader("🎯 NEW: Working Format Report")
+                # Generate and show working format
+                st.subheader("🎯 Working Format Report")
                 working_report = generate_simple_working_report(symbol, selected_date, kp_df)
                 if working_report:
-                    st.text_area("Working Format:", working_report, height=100)
+                    st.text_area("Working Format:", working_report, height=150)
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        if st.button("📱 Send Working Format Only", key="send_working_only"):
+                        if st.button("📱 Send Working Format", key="send_working_format"):
                             success, msg = send_to_telegram(working_report)
                             if success:
                                 st.balloons()
                                 st.success(f"🎉 SUCCESS! {msg}")
-                                st.info("💡 **SOLUTION FOUND! This format works perfectly.**")
                             else:
                                 st.error(f"❌ Working format failed: {msg}")
                     
                     with col2:
-                        if st.button("🔄 Replace Main Report", key="replace_main"):
-                            st.info("✅ **From now on, all reports will use this working format!**")
-                            # Update the main report variable
-                            report = working_report
-                            st.rerun()
-                else:
-                    st.error("Could not generate working format")
-                
-                # Show report stats
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Report Length", f"{len(report)} chars")
-                with col2:
-                    st.metric("Lines", f"{report.count(chr(10)) + 1}")
-                with col3:
-                    st.metric("Size", f"{len(report.encode('utf-8'))} bytes")
-                with col4:
-                    telegram_limit = 4096
-                    status = "✅ OK" if len(report) <= telegram_limit else "⚠️ Too Long"
-                    st.metric("Telegram Status", status)
-                
-                # Detailed send section
-                st.subheader("📤 Send to Telegram")
-                
-                # Add character cleaning option
-                if st.checkbox("🧹 Clean special characters", value=True):
-                    clean_report = report.replace('🚀', '').replace('✅', '').replace('⚠️', '').replace('🔸', '').replace('🔹', '')
-                    clean_report = clean_report.replace('📈', '').replace('📉', '').replace('🔄', '').replace('🎯', '')
-                    st.info(f"Cleaned version: {len(clean_report)} characters")
-                else:
-                    clean_report = report
-                
-                # Character analysis section
-                st.subheader("🔍 Report Content Analysis")
-                
-                # Show first few lines
-                report_lines = clean_report.split('\n')
-                st.write("**Report broken down by lines:**")
-                for i, line in enumerate(report_lines[:10]):  # Show first 10 lines
-                    st.write(f"Line {i+1}: `{repr(line)}`")
-                
-                # Test sending line by line
-                st.subheader("📝 Line-by-Line Testing")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button("🔤 Send Title Line", key="send_title_line"):
-                        title_line = report_lines[0] if report_lines else "No title"
-                        success, msg = send_to_telegram(title_line)
-                        if success:
-                            st.success(f"✅ Title line sent!")
-                        else:
-                            st.error(f"❌ Title line failed: {msg}")
-                
-                with col2:
-                    if st.button("📊 Send First 3 Lines", key="send_first_3"):
-                        first_3 = '\n'.join(report_lines[:3])
-                        success, msg = send_to_telegram(first_3)
-                        if success:
-                            st.success(f"✅ First 3 lines sent!")
-                        else:
-                            st.error(f"❌ First 3 failed: {msg}")
-                
-                with col3:
-                    if st.button("🧪 Send Plain Text Version", key="send_plain"):
-                        # Super aggressive cleaning
-                        plain_version = clean_report
-                        # Remove all special characters except basic ones
-                        import re
-                        plain_version = re.sub(r'[^\w\s\-\.\:\|\(\)]+', '', plain_version)
-                        plain_version = re.sub(r'\s+', ' ', plain_version)  # Multiple spaces to single
-                        
-                        success, msg = send_to_telegram(plain_version[:500])  # Only first 500 chars
-                        if success:
-                            st.success(f"✅ Plain version sent!")
-                        else:
-                            st.error(f"❌ Plain version failed: {msg}")
-                
-                # Show character analysis
-                with st.expander("🔬 Character Analysis"):
-                    st.write("**Characters in the report:**")
-                    unique_chars = set(clean_report)
-                    problematic_chars = []
-                    
-                    for char in sorted(unique_chars):
-                        char_code = ord(char)
-                        if char_code > 127:  # Non-ASCII
-                            problematic_chars.append(f"'{char}' (code: {char_code})")
-                        
-                    if problematic_chars:
-                        st.warning("**Potentially problematic characters found:**")
-                        st.write(problematic_chars)
-                    else:
-                        st.success("No problematic characters found")
-                    
-                    # Show first 200 chars with escape codes
-                    st.write("**Raw first 200 characters:**")
-                    st.code(repr(clean_report[:200]))
-                
-                # Test with exactly same format as working message
-                st.subheader("🎯 Mirror Successful Format")
-                if st.button("📋 Send Like Diagnostic Format", key="send_diagnostic_format"):
-                    # Use the exact same format as the working diagnostic message
-                    diagnostic_format = f"""DIAGNOSTIC TEST from Aayeshatech Bot
-Time: {datetime.now().strftime('%H:%M:%S')}
-Symbol: {symbol.upper()}
-Date: {selected_date.strftime('%B %d, %Y')}
-Report Length: {len(report)} chars
-[GOOD] Test message format"""
-                    
-                    success, msg = send_to_telegram(diagnostic_format)
-                    if success:
-                        st.success(f"✅ Diagnostic format sent!")
-                        st.info("💡 If this works, we need to reformat the astro report to match this structure")
-                    else:
-                        st.error(f"❌ Diagnostic format failed: {msg}")
-                
-                # More specific debugging
-                st.subheader("🕵️ Deep Debug Tests")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button("🧹 Ultra Clean Test", key="ultra_clean"):
-                        # Remove leading/trailing spaces and normalize
-                        ultra_clean = clean_report.strip()
-                        ultra_clean = ' '.join(ultra_clean.split())  # Normalize all whitespace
-                        ultra_clean = ultra_clean.replace('\n', ' | ')  # Replace newlines with separators
-                        
-                        # Test with just first sentence
-                        first_sentence = ultra_clean.split('.')[0] + "."
-                        st.info(f"Sending: {first_sentence}")
-                        
-                        success, msg = send_to_telegram(first_sentence)
-                        if success:
-                            st.success(f"✅ Ultra clean worked!")
-                        else:
-                            st.error(f"❌ Ultra clean failed: {msg}")
-                
-                with col2:
-                    if st.button("📝 Build From Scratch", key="build_scratch"):
-                        # Build a message from scratch with same content but different structure
-                        scratch_msg = f"Aayeshatech Alert for {symbol} on {selected_date.strftime('%Y-%m-%d')}. "
-                        scratch_msg += "Bullish: 08:46 AM Moon-Jupiter. "
-                        scratch_msg += "Bearish: 12:20 PM Moon-Saturn. "
-                        scratch_msg += "Strategy: Buy dips around bullish times."
-                        
-                        st.info(f"Built from scratch: {scratch_msg}")
-                        
-                        success, msg = send_to_telegram(scratch_msg)
-                        if success:
-                            st.success(f"✅ Built from scratch worked!")
-                        else:
-                            st.error(f"❌ Built from scratch failed: {msg}")
-                
-                with col3:
-                    if st.button("🔤 ASCII Only Test", key="ascii_only"):
-                        # Force everything to basic ASCII
-                        ascii_msg = ""
-                        for char in clean_report:
-                            if ord(char) < 128:  # Only ASCII
-                                ascii_msg += char
+                        if st.button("📱 Send Full Report", key="send_full_report"):
+                            success, msg = send_to_telegram(report)
+                            if success:
+                                st.balloons()
+                                st.success(f"🎉 SUCCESS! {msg}")
                             else:
-                                ascii_msg += "?"
-                        
-                        # Take first 300 chars
-                        ascii_msg = ascii_msg[:300].strip()
-                        st.info(f"ASCII only: {ascii_msg[:100]}...")
-                        
-                        success, msg = send_to_telegram(ascii_msg)
-                        if success:
-                            st.success(f"✅ ASCII only worked!")
-                        else:
-                            st.error(f"❌ ASCII only failed: {msg}")
-                
-                # Test completely different content with same structure
-                st.subheader("🧪 Content Structure Test")
-                
-                if st.button("📊 Test With Different Content", key="diff_content"):
-                    # Same structure as astro report but different content
-                    test_structure = f"""Weather Report | MUMBAI Forecast (July 31, 2025)
-
-Sunny Periods:
-08:46 AM - Morning Sun (Clear skies expected)
-02:25 PM - Afternoon Bright (Good visibility)
-
-Cloudy Periods:
-12:20 PM - Noon Clouds (Overcast likely) 
-08:22 PM - Evening Gray (Light rain possible)
-
-Weather Strategy:
-Buy umbrella around cloudy times
-Plan outdoor activities during sunny periods
-
-Risk Level: MODERATE | Carry light jacket."""
-                    
-                    success, msg = send_to_telegram(test_structure)
-                    if success:
-                        st.balloons()
-                        st.success(f"✅ Different content with same structure worked!")
-                        st.info("💡 **This proves the issue is in the ASTRO CONTENT, not the structure!**")
-                    else:
-                        st.error(f"❌ Different content failed too: {msg}")
-                        st.info("💡 **This means the issue is the MESSAGE STRUCTURE itself**")
-                
-                # Try the working diagnostic format but with astro data
-                if st.button("🎯 Diagnostic Format + Astro Data", key="diag_astro"):
-                    # Use exact format of working diagnostic but with astro content
-                    diag_astro = f"""ASTRO ANALYSIS from Aayeshatech Bot
-Symbol: {symbol.upper()}
-Date: {selected_date.strftime('%Y-%m-%d')}
-Time: {datetime.now().strftime('%H:%M:%S')}
-
-Bullish: 08:46 AM Moon-Jupiter
-Bearish: 12:20 PM Moon-Saturn
-Strategy: Buy dips morning, sell rallies afternoon
-
-[GOOD] Analysis complete"""
-                    
-                    success, msg = send_to_telegram(diag_astro)
-                    if success:
-                        st.balloons()
-                        st.success(f"✅ Diagnostic format + astro data worked!")
-                        st.info("💡 **Solution found! Use this simpler format for astro reports**")
-                    else:
-                        st.error(f"❌ Diagnostic + astro failed: {msg}")
-                
-                # Show what we're learning
-                st.subheader("🔍 What We're Learning")
-                st.write("**Working Messages:**")
-                st.write("✅ 'Hello from Aayeshatech Bot!'")
-                st.write("✅ Diagnostic test with time and [GOOD] tags")
-                st.write("✅ Manual API browser test")
-                
-                st.write("**Failing Messages:**") 
-                st.write("❌ Generated astro reports (666 chars)")
-                st.write("❌ All formatting variations tried")
-                st.write("❌ Even simple line-by-line tests")
-                
-def generate_simple_working_report(symbol, date, kp_data):
-    """Generate report using EXACT format of working diagnostic messages"""
-    try:
-        # Convert input date
-        if isinstance(date, str):
-            date = datetime.strptime(date, '%Y/%m/%d').date()
-        elif isinstance(date, datetime):
-            date = date.date()
-        
-        # Filter for selected date
-        filtered = kp_data[kp_data['DateTime'].dt.date == date].copy()
-        if filtered.empty:
-            return None
-            
-        # Convert times to IST
-        filtered['Time_IST'] = filtered['DateTime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata').dt.strftime('%I:%M %p')
-        
-        # Find best and worst times (simplified)
-        best_time = "08:46 AM"
-        worst_time = "12:20 PM"
-        
-        # Use EXACT same format as working diagnostic message
-        working_format = f"""ASTRO ANALYSIS from Aayeshatech Bot
-Time: {datetime.now().strftime('%H:%M:%S')}
-Symbol: {symbol.upper()}
-Date: {date.strftime('%B %d, %Y')}
-Best: {best_time} Moon-Jupiter
-Worst: {worst_time} Moon-Saturn
-[GOOD] Analysis complete"""
-        
-        return working_format
-        
-    except Exception as e:
-        logging.error(f"Simple report error: {str(e)}")
-        # Fallback to absolute minimum
-        return f"ASTRO ALERT for {symbol.upper()} on {date.strftime('%Y-%m-%d')} [GOOD] Ready"
-
-                st.info("🎯 **Next Step:** If 'Diagnostic Format + Astro Data' works, we'll redesign the report generator to use that proven format!")
-                
-                # SOLUTION: Use working format
-                st.subheader("🎯 SOLUTION: Use Proven Working Format")
-                
-                if st.button("🚀 Generate Working Format Report", key="working_format"):
-                    with st.spinner("Generating using proven working format..."):
-                        # Generate using the EXACT format that works
-                        working_report = generate_simple_working_report(symbol, selected_date, kp_df)
-                        
-                        if working_report:
-                            st.success("✅ Working format report generated!")
-                            st.code(working_report)
-                            
-                            # Send it
-                            if st.button("📱 Send Working Format", key="send_working"):
-                                success, msg = send_to_telegram(working_report)
-                                if success:
-                                    st.balloons()
-                                    st.success(f"🎉 SUCCESS! Working format sent: {msg}")
-                                    st.info("💡 **This is your solution! Use this format for all astro reports.**")
-                                else:
-                                    st.error(f"❌ Even working format failed: {msg}")
-                        else:
-                            st.error("Failed to generate working format")
-                
-                # Incremental testing to find exact breaking point
-                st.subheader("🔬 Find Exact Breaking Point")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    if st.button("🧪 Test 1: Basic Structure", key="test_basic"):
-                        basic = f"ASTRO TEST from Aayeshatech Bot"
-                        success, msg = send_to_telegram(basic)
-                        if success:
-                            st.success("✅ Basic structure works")
-                        else:
-                            st.error(f"❌ Basic structure fails: {msg}")
-                    
-                    if st.button("🧪 Test 3: Add Symbol", key="test_symbol"):
-                        with_symbol = f"ASTRO TEST from Aayeshatech Bot\nSymbol: {symbol.upper()}"
-                        success, msg = send_to_telegram(with_symbol)
-                        if success:
-                            st.success("✅ With symbol works")
-                        else:
-                            st.error(f"❌ With symbol fails: {msg}")
-                
-                with col2:
-                    if st.button("🧪 Test 2: Add Time", key="test_time"):
-                        with_time = f"ASTRO TEST from Aayeshatech Bot\nTime: {datetime.now().strftime('%H:%M:%S')}"
-                        success, msg = send_to_telegram(with_time)
-                        if success:
-                            st.success("✅ With time works")
-                        else:
-                            st.error(f"❌ With time fails: {msg}")
-                    
-                    if st.button("🧪 Test 4: Complete", key="test_complete"):
-                        complete = f"""ASTRO TEST from Aayeshatech Bot
-Time: {datetime.now().strftime('%H:%M:%S')}
-Symbol: {symbol.upper()}
-[GOOD] Complete"""
-                        success, msg = send_to_telegram(complete)
-                        if success:
-                            st.success("✅ Complete works")
-                        else:
-                            st.error(f"❌ Complete fails: {msg}")
-                
-                st.info("🎯 **Run these tests in order to find exactly where it breaks!**")
+                                st.error(f"❌ Full report failed: {msg}")
                 
                 # Download option
                 st.download_button(
