@@ -8,7 +8,7 @@ import pytz
 import logging
 import hashlib
 
-# Telegram Configuration - Your Bot Credentials
+# Telegram Configuration
 BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
 CHAT_ID = '-1002840229810'
 
@@ -19,7 +19,7 @@ logging.basicConfig(
     filename='astro_trading.log'
 )
 
-# ========== Symbol-Specific Configurations ==========
+# Symbol Configurations
 SYMBOL_RULERS = {
     'GOLD': {'primary': 'Su', 'secondary': 'Ju', 'bearish': ['Sa', 'Ra'], 'strength': 1.2},
     'SILVER': {'primary': 'Mo', 'secondary': 'Ve', 'bearish': ['Sa', 'Ke'], 'strength': 1.1},
@@ -33,12 +33,28 @@ SYMBOL_RULERS = {
     'DEFAULT': {'primary': 'Su', 'secondary': 'Ju', 'bearish': ['Sa', 'Ra'], 'strength': 1.0}
 }
 
-def get_symbol_hash_modifier(symbol):
-    """Generate consistent hash-based modifier for symbol"""
-    return int(hashlib.md5(symbol.encode()).hexdigest()[:8], 16) % 100
+# Aspect interpretations
+ASPECTS = {
+    ('Mo','Ju'): "Optimism in early trade",
+    ('Mo','Ve'): "Recovery expected",
+    ('Mo','Sa'): "Downward pressure",
+    ('Mo','Ra'): "Risk of panic selling",
+    ('Mo','Ke'): "Sharp drop possible",
+    ('Mo','Me'): "Sideways movement",
+    ('Mo','Su'): "Mixed signals",
+    ('Su','Ju'): "Strong bullish momentum",
+    ('Su','Ve'): "Positive sentiment",
+    ('Su','Sa'): "Institutional selling",
+    ('Ma','Ju'): "Aggressive buying",
+    ('Ma','Ve'): "Speculative rally",
+    ('Ma','Sa'): "Correction likely",
+    ('Ju','Ve'): "Sustained uptrend",
+    ('Sa','Ra'): "Major decline risk",
+    ('Ra','Ke'): "Extreme volatility"
+}
 
 def parse_kp_astro(file_path):
-    """Parse KP Astro data with robust error handling"""
+    """Parse KP Astro data"""
     data = []
     try:
         with open(file_path, 'r') as f:
@@ -47,13 +63,11 @@ def parse_kp_astro(file_path):
                 if not line or line.startswith('Planet'):
                     continue
                 
-                # Handle both space and tab separated data
                 parts = re.split(r'\s+', line)
                 if len(parts) < 11:
                     continue
                 
                 try:
-                    # Parse datetime with error handling
                     dt_str = f"{parts[1]} {parts[2]}"
                     date_time = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
                     
@@ -66,11 +80,9 @@ def parse_kp_astro(file_path):
                         'Zodiac': parts[7],
                         'Nakshatra': parts[8],
                         'Pada': parts[9],
-                        'Position': parts[10],
-                        'Declination': parts[11] if len(parts) > 11 else ''
+                        'Position': parts[10]
                     })
-                except ValueError as e:
-                    logging.warning(f"Skipping line due to datetime error: {line} | Error: {str(e)}")
+                except ValueError:
                     continue
         
         df = pd.DataFrame(data)
@@ -79,19 +91,12 @@ def parse_kp_astro(file_path):
         return df
     
     except Exception as e:
-        logging.error(f"File parsing error: {str(e)}")
         st.error(f"Error parsing file: {str(e)}")
         return pd.DataFrame()
 
-def generate_simple_report(symbol, date, kp_data):
-    """Generate simple working report format"""
+def generate_formatted_report(symbol, date, kp_data):
+    """Generate report in the exact specified format"""
     try:
-        # Convert input date
-        if isinstance(date, str):
-            date = datetime.strptime(date, '%Y/%m/%d').date()
-        elif isinstance(date, datetime):
-            date = date.date()
-        
         # Filter for selected date
         filtered = kp_data[kp_data['DateTime'].dt.date == date].copy()
         if filtered.empty:
@@ -100,34 +105,75 @@ def generate_simple_report(symbol, date, kp_data):
         # Convert times to IST
         filtered['Time_IST'] = filtered['DateTime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata').dt.strftime('%I:%M %p')
         
-        # Find best and worst times (simplified)
-        best_time = "08:46 AM"
-        worst_time = "12:20 PM"
+        # Categorize aspects
+        bullish = []
+        bearish = []
+        neutral = []
         
-        # Simple report format
-        report = f"""ASTRO ANALYSIS from Aayeshatech Bot
-Time: {datetime.now().strftime('%H:%M:%S')}
-Symbol: {symbol.upper()}
-Date: {date.strftime('%B %d, %Y')}
-Best: {best_time} Moon-Jupiter
-Worst: {worst_time} Moon-Saturn
-[GOOD] Analysis complete"""
+        for _, row in filtered.iterrows():
+            aspect_key = (row['Planet'], row['Sub_Lord'])
+            desc = ASPECTS.get(aspect_key, "Market movement expected")
+            
+            if aspect_key in [('Mo','Ju'), ('Mo','Ve'), ('Su','Ju'), ('Su','Ve'), ('Ma','Ju'), ('Ma','Ve'), ('Ju','Ve')]:
+                bullish.append(f"✅ {row['Time_IST']} - {row['Planet']}-{row['Sub_Lord']} ({desc})")
+            elif aspect_key in [('Mo','Sa'), ('Mo','Ra'), ('Mo','Ke'), ('Su','Sa'), ('Ma','Sa'), ('Sa','Ra'), ('Ra','Ke')]:
+                bearish.append(f"⚠️ {row['Time_IST']} - {row['Planet']}-{row['Sub_Lord']} ({desc})")
+            else:
+                neutral.append(f"🔸 {row['Time_IST']} - {row['Planet']}-{row['Sub_Lord']} ({desc})")
         
-        return report
+        # Sort by time
+        for category in [bullish, bearish, neutral]:
+            category.sort(key=lambda x: datetime.strptime(x.split(' - ')[0][2:].strip(), '%I:%M %p'))
         
+        # Generate strategy
+        strategy = []
+        if bullish:
+            best_times = [x.split(' - ')[0] for x in bullish[:2]]
+            strategy.append(f"🔹 Buy Dips: Around {', '.join(best_times)}")
+        if bearish:
+            sell_times = [x.split(' - ')[0] for x in bearish[:2]]
+            strategy.append(f"🔹 Sell Rallies: After {', '.join(sell_times)}")
+        
+        # Build report in exact format
+        report = [
+            f"🚀 Aayeshatech Astro Trend | {symbol.upper()} Price Outlook ({date.strftime('%B %d, %Y')}) 🚀",
+            "",
+            "📈 Bullish Factors:"
+        ]
+        report.extend(bullish[:3])  # Show top 3 bullish
+        
+        report.extend([
+            "",
+            "📉 Bearish Factors:"
+        ])
+        report.extend(bearish[:3])  # Show top 3 bearish
+        
+        report.extend([
+            "",
+            "🔄 Neutral/Volatile:"
+        ])
+        report.extend(neutral[:2])  # Show top 2 neutral
+        
+        report.extend([
+            "",
+            "🎯 Trading Strategy:"
+        ])
+        report.extend(strategy)
+        
+        report.extend([
+            "",
+            "⚠️ Note: Astro trends suggest volatility, trade with caution."
+        ])
+        
+        return "\n".join(report)
+    
     except Exception as e:
-        logging.error(f"Simple report error: {str(e)}")
-        return f"ASTRO ALERT for {symbol.upper()} on {date.strftime('%Y-%m-%d')} [GOOD] Ready"
+        logging.error(f"Report generation error: {str(e)}")
+        return None
 
 def send_to_telegram(message):
-    """Send message to Telegram with comprehensive error handling"""
-    # Check message length (Telegram limit is 4096 characters)
-    if len(message) > 4096:
-        logging.warning(f"Message too long: {len(message)} characters. Truncating...")
-        message = message[:4000] + "\n...[truncated]"
-    
+    """Send message to Telegram"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    
     payload = {
         'chat_id': CHAT_ID,
         'text': message
@@ -135,33 +181,20 @@ def send_to_telegram(message):
     
     try:
         response = requests.post(url, json=payload, timeout=15)
-        
         if response.status_code == 200:
-            response_json = response.json()
-            if response_json.get('ok'):
-                return True, "✅ Message sent successfully!"
-            else:
-                return False, f"❌ Telegram returned error: {response_json.get('description', 'Unknown error')}"
+            return True, "✅ Message sent successfully!"
         else:
-            error_data = response.json() if response.content else {}
-            error_desc = error_data.get('description', 'Unknown error')
-            return False, f"❌ Telegram API Error: {error_desc}"
-            
-    except requests.exceptions.Timeout:
-        return False, "❌ Request timeout. Check your internet connection."
-    except requests.exceptions.ConnectionError:
-        return False, "❌ Cannot connect to Telegram. Check internet connection."
-    except Exception as e:
-        return False, f"❌ Error: {str(e)}"
+            return False, f"❌ Telegram API Error"
+    except Exception:
+        return False, "❌ Failed to connect to Telegram"
 
-# ========== Streamlit UI ==========
 def main():
     st.set_page_config(page_title="Aayeshatech Astro Alerts", layout="wide")
     st.title("📡 Astro Trading Telegram Alerts")
     
     # File upload
     uploaded_file = st.file_uploader("Upload KP Astro Data", type="txt")
-    file_path = "kp_astro.txt"  # Standardized filename
+    file_path = "kp_astro.txt"
     
     if uploaded_file is not None:
         try:
@@ -176,11 +209,10 @@ def main():
         st.warning("Please upload KP Astro data file")
         return
     
-    # Load and parse data
+    # Load data
     kp_df = parse_kp_astro(file_path)
     if kp_df.empty:
-        st.error("No valid data found in the file. Please check the format.")
-        st.info("Expected format: Planet Date Time Motion Sign_Lord Star_Lord Sub_Lord Zodiac Nakshatra Pada Position Declination")
+        st.error("No valid data found in the file.")
         return
     
     # User inputs
@@ -193,35 +225,20 @@ def main():
             max_value=kp_df['DateTime'].max().date()
         )
     with col2:
-        symbol = st.text_input("Market Symbol", "GOLD").upper()
-    
-    # Show symbol info
-    if symbol:
-        symbol_config = SYMBOL_RULERS.get(symbol, SYMBOL_RULERS['DEFAULT'])
-        st.info(f"📊 {symbol} Analysis: Primary Ruler: {symbol_config['primary']}, Secondary: {symbol_config['secondary']}")
+        symbol = st.text_input("Market Symbol", "NIFTY").upper()
     
     # Generate and send report
     if st.button("Generate and Send Report"):
         with st.spinner("Creating astro report..."):
-            # Check if we have data for selected date
-            date_data = kp_df[kp_df['DateTime'].dt.date == selected_date]
-            
-            if len(date_data) == 0:
-                st.error("❌ No astro data found for selected date!")
-                return
-            
-            # Generate simple report
-            report = generate_simple_report(symbol, selected_date, kp_df)
+            report = generate_formatted_report(symbol, selected_date, kp_df)
             
             if report is None:
-                st.error("❌ Report generation failed!")
+                st.error("Failed to generate report")
                 return
             
-            # Show the report
             st.subheader("Generated Report")
-            st.text_area("Report:", report, height=200)
+            st.text_area("Report:", report, height=300)
             
-            # Send to Telegram
             success, msg = send_to_telegram(report)
             if success:
                 st.balloons()
