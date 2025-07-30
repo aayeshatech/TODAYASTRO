@@ -8,7 +8,7 @@ import pytz
 import logging
 import hashlib
 
-# Telegram Configuration
+# Telegram Configuration - Your Bot Credentials
 BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
 CHAT_ID = '-1002840229810'
 
@@ -311,6 +311,50 @@ def main():
     st.set_page_config(page_title="Aayeshatech Astro Alerts", layout="wide")
     st.title("📡 Astro Trading Telegram Alerts")
     
+    # Sidebar - Telegram Configuration
+    st.sidebar.header("🤖 Telegram Setup")
+    st.sidebar.write(f"**Bot Token:** ...{BOT_TOKEN[-10:]}")
+    st.sidebar.write(f"**Chat ID:** {CHAT_ID}")
+    
+    if st.sidebar.button("🔍 Test Telegram Connection"):
+        with st.sidebar:
+            with st.spinner("Testing connection..."):
+                success, result = test_telegram_connection()
+                if success:
+                    st.sidebar.success(result)
+                    
+                    # Send test message
+                    if st.sidebar.button("📤 Send Test Message"):
+                        test_msg = "🤖 Test message from Aayeshatech Astro Bot - Connection successful!"
+                        test_success, test_result = send_to_telegram(test_msg)
+                        if test_success:
+                            st.sidebar.success("✅ Test message sent!")
+                        else:
+                            st.sidebar.error(f"❌ Test failed: {test_result}")
+                else:
+                    st.sidebar.error(result)
+    
+    st.sidebar.markdown("---")
+    
+    # Telegram Setup Help
+    with st.sidebar.expander("🛠️ Telegram Setup Help"):
+        st.write("**Step 1:** Create bot with @BotFather")
+        st.write("**Step 2:** Get bot token")
+        st.write("**Step 3:** Add bot to your channel/group")
+        st.write("**Step 4:** Get Chat ID:")
+        st.code("https://api.telegram.org/bot<TOKEN>/getUpdates")
+        st.write("**Step 5:** Update BOT_TOKEN and CHAT_ID in code")
+        st.write("**Step 6:** Test connection using button above")
+    
+    # Emergency Debug Section
+    with st.sidebar.expander("🔧 Debug Info"):
+        if st.button("Show Debug Info"):
+            st.write("**Current Settings:**")
+            st.write(f"Bot Token: {'✅ Set' if BOT_TOKEN else '❌ Missing'}")
+            st.write(f"Chat ID: {'✅ Set' if CHAT_ID else '❌ Missing'}")
+            st.write(f"Token Length: {len(BOT_TOKEN) if BOT_TOKEN else 0}")
+            st.write(f"Chat ID Type: {type(CHAT_ID).__name__}")
+            
     # Show supported symbols
     st.sidebar.header("Supported Symbols")
     st.sidebar.write("Optimized for:")
@@ -369,13 +413,50 @@ def main():
                 st.subheader("Report Preview")
                 st.markdown(f"```\n{report}\n```")
                 
-                if st.button("Send to Telegram"):
-                    success, message = send_to_telegram(report)
-                    if success:
-                        st.balloons()
-                        st.success("✅ Report sent to Telegram!")
-                    else:
-                        st.error(f"❌ {message}")
+                # Show report stats
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Report Length", f"{len(report)} chars")
+                with col2:
+                    st.metric("Lines", f"{report.count(chr(10)) + 1}")
+                with col3:
+                    st.metric("Size", f"{len(report.encode('utf-8'))} bytes")
+                
+                # Sending options
+                st.subheader("📤 Send Options")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("📱 Send to Telegram", key="send_telegram"):
+                        with st.spinner("Sending to Telegram..."):
+                            success, message = send_to_telegram(report)
+                            if success:
+                                st.balloons()
+                                st.success(message)
+                            else:
+                                st.error(message)
+                                
+                                # Show troubleshooting tips
+                                st.error("**Troubleshooting Tips:**")
+                                st.write("1. Check if bot is added to the channel/group")
+                                st.write("2. Verify bot has 'Send Messages' permission")
+                                st.write("3. Ensure Chat ID is correct (use /start in bot)")
+                                st.write("4. Test connection using sidebar button")
+                
+                with col2:
+                    # Alternative - Copy to clipboard
+                    if st.button("📋 Copy Report", key="copy_report"):
+                        st.code(report, language="text")
+                        st.info("📋 Report ready to copy! Select all text above and copy.")
+                
+                # Download option
+                st.download_button(
+                    label="💾 Download Report",
+                    data=report,
+                    file_name=f"astro_report_{symbol}_{selected_date.strftime('%Y%m%d')}.txt",
+                    mime="text/plain"
+                )
+                
             else:
                 st.error("Could not generate report for selected date")
 
