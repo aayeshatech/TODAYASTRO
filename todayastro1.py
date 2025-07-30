@@ -39,6 +39,48 @@ PREDEFINED_SYMBOLS = {
         'strength': 1.3,
         'rulers': {'primary': 'Me', 'secondary': 'Ju', 'caution': 'Sa'}
     },
+    'CRUDE': {
+        'bullish': [('Ju','Ve'), ('Mo','Ju'), ('Su','Ve')],
+        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
+        'neutral': [('Mo','Me'), ('Ve','Me')],
+        'strength': 1.4,
+        'rulers': {'primary': 'Ve', 'secondary': 'Ju', 'caution': 'Sa'}
+    },
+    'BTC': {
+        'bullish': [('Ju','Me'), ('Mo','Ju'), ('Su','Ju')],
+        'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Ma','Sa')],
+        'neutral': [('Mo','Me'), ('Ve','Me')],
+        'strength': 1.5,
+        'rulers': {'primary': 'Ju', 'secondary': 'Me', 'caution': 'Sa'}
+    },
+    'PHARMA': {
+        'bullish': [('Ju','Ve'), ('Mo','Ju'), ('Su','Ve')],
+        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
+        'neutral': [('Mo','Me'), ('Ve','Me')],
+        'strength': 1.1,
+        'rulers': {'primary': 'Ve', 'secondary': 'Ju', 'caution': 'Sa'}
+    },
+    'FMCG': {
+        'bullish': [('Ju','Ve'), ('Mo','Ju'), ('Su','Ve')],
+        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
+        'neutral': [('Mo','Me'), ('Ve','Me')],
+        'strength': 1.0,
+        'rulers': {'primary': 'Ve', 'secondary': 'Ju', 'caution': 'Sa'}
+    },
+    'AUTO': {
+        'bullish': [('Ju','Me'), ('Mo','Ju'), ('Su','Ju')],
+        'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Ma','Sa')],
+        'neutral': [('Mo','Me'), ('Ve','Me')],
+        'strength': 1.2,
+        'rulers': {'primary': 'Ju', 'secondary': 'Me', 'caution': 'Sa'}
+    },
+    'OIL AND GAS': {
+        'bullish': [('Ju','Ve'), ('Mo','Ju'), ('Su','Ve')],
+        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
+        'neutral': [('Mo','Me'), ('Ve','Me')],
+        'strength': 1.3,
+        'rulers': {'primary': 'Ve', 'secondary': 'Ju', 'caution': 'Sa'}
+    },
     'DEFAULT': {
         'bullish': [('Mo','Ju'), ('Su','Ju'), ('Ju','Ve')],
         'bearish': [('Mo','Sa'), ('Sa','Ra'), ('Mo','Ke')],
@@ -176,9 +218,13 @@ def send_to_telegram(message):
     
     try:
         response = requests.post(url, json=payload, timeout=10)
-        return response.status_code == 200, "✅ Report sent to Telegram!" if response.status_code == 200 else "❌ Failed to send"
-    except Exception:
-        return False, "❌ Connection error"
+        if response.status_code == 200:
+            return True, "✅ Report sent to Telegram!"
+        else:
+            error_msg = f"❌ Telegram API Error: {response.status_code} - {response.text}"
+            return False, error_msg
+    except Exception as e:
+        return False, f"❌ Connection error: {str(e)}"
 
 def main():
     st.set_page_config(page_title="Astro Symbol Tracker", layout="centered")
@@ -215,7 +261,7 @@ def main():
     if input_method == "Choose from predefined":
         symbol = st.selectbox(
             "Select Symbol",
-            options=list(PREDEFINED_SYMBOLS.keys())[:-1],  # Exclude DEFAULT
+            options=['GOLD', 'SILVER', 'NIFTY', 'BANKNIFTY', 'CRUDE', 'BTC', 'PHARMA', 'FMCG', 'AUTO', 'OIL AND GAS'],
             index=0
         )
     else:
