@@ -882,34 +882,129 @@ Report Length: {len(report)} chars
                     else:
                         st.error(f"❌ Diagnostic format failed: {msg}")
                 
-                # Emergency simple astro report
-                if st.button("🚨 Emergency Simple Astro Report", key="emergency_report"):
-                    emergency = f"""AAYESHATECH ASTRO ALERT
-Symbol: {symbol.upper()}
-Date: {selected_date.strftime('%Y-%m-%d')}
+                # More specific debugging
+                st.subheader("🕵️ Deep Debug Tests")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button("🧹 Ultra Clean Test", key="ultra_clean"):
+                        # Remove leading/trailing spaces and normalize
+                        ultra_clean = clean_report.strip()
+                        ultra_clean = ' '.join(ultra_clean.split())  # Normalize all whitespace
+                        ultra_clean = ultra_clean.replace('\n', ' | ')  # Replace newlines with separators
+                        
+                        # Test with just first sentence
+                        first_sentence = ultra_clean.split('.')[0] + "."
+                        st.info(f"Sending: {first_sentence}")
+                        
+                        success, msg = send_to_telegram(first_sentence)
+                        if success:
+                            st.success(f"✅ Ultra clean worked!")
+                        else:
+                            st.error(f"❌ Ultra clean failed: {msg}")
+                
+                with col2:
+                    if st.button("📝 Build From Scratch", key="build_scratch"):
+                        # Build a message from scratch with same content but different structure
+                        scratch_msg = f"Aayeshatech Alert for {symbol} on {selected_date.strftime('%Y-%m-%d')}. "
+                        scratch_msg += "Bullish: 08:46 AM Moon-Jupiter. "
+                        scratch_msg += "Bearish: 12:20 PM Moon-Saturn. "
+                        scratch_msg += "Strategy: Buy dips around bullish times."
+                        
+                        st.info(f"Built from scratch: {scratch_msg}")
+                        
+                        success, msg = send_to_telegram(scratch_msg)
+                        if success:
+                            st.success(f"✅ Built from scratch worked!")
+                        else:
+                            st.error(f"❌ Built from scratch failed: {msg}")
+                
+                with col3:
+                    if st.button("🔤 ASCII Only Test", key="ascii_only"):
+                        # Force everything to basic ASCII
+                        ascii_msg = ""
+                        for char in clean_report:
+                            if ord(char) < 128:  # Only ASCII
+                                ascii_msg += char
+                            else:
+                                ascii_msg += "?"
+                        
+                        # Take first 300 chars
+                        ascii_msg = ascii_msg[:300].strip()
+                        st.info(f"ASCII only: {ascii_msg[:100]}...")
+                        
+                        success, msg = send_to_telegram(ascii_msg)
+                        if success:
+                            st.success(f"✅ ASCII only worked!")
+                        else:
+                            st.error(f"❌ ASCII only failed: {msg}")
+                
+                # Test completely different content with same structure
+                st.subheader("🧪 Content Structure Test")
+                
+                if st.button("📊 Test With Different Content", key="diff_content"):
+                    # Same structure as astro report but different content
+                    test_structure = f"""Weather Report | MUMBAI Forecast (July 31, 2025)
 
-BULLISH TIMES:
-- 08:46 AM Moon-Jupiter
-- 09:56 PM Moon-Venus
+Sunny Periods:
+08:46 AM - Morning Sun (Clear skies expected)
+02:25 PM - Afternoon Bright (Good visibility)
 
-BEARISH TIMES:  
-- 12:20 PM Moon-Saturn
-- 08:22 PM Moon-Ketu
+Cloudy Periods:
+12:20 PM - Noon Clouds (Overcast likely) 
+08:22 PM - Evening Gray (Light rain possible)
 
-STRATEGY:
-- Buy dips around morning times
-- Sell rallies after afternoon
+Weather Strategy:
+Buy umbrella around cloudy times
+Plan outdoor activities during sunny periods
 
-RISK LEVEL: MODERATE
-Trade with caution."""
+Risk Level: MODERATE | Carry light jacket."""
                     
-                    success, msg = send_to_telegram(emergency)
+                    success, msg = send_to_telegram(test_structure)
                     if success:
                         st.balloons()
-                        st.success(f"✅ Emergency report sent!")
-                        st.info("💡 Check your Telegram! If this works, we know the format was the issue")
+                        st.success(f"✅ Different content with same structure worked!")
+                        st.info("💡 **This proves the issue is in the ASTRO CONTENT, not the structure!**")
                     else:
-                        st.error(f"❌ Even emergency report failed: {msg}")
+                        st.error(f"❌ Different content failed too: {msg}")
+                        st.info("💡 **This means the issue is the MESSAGE STRUCTURE itself**")
+                
+                # Try the working diagnostic format but with astro data
+                if st.button("🎯 Diagnostic Format + Astro Data", key="diag_astro"):
+                    # Use exact format of working diagnostic but with astro content
+                    diag_astro = f"""ASTRO ANALYSIS from Aayeshatech Bot
+Symbol: {symbol.upper()}
+Date: {selected_date.strftime('%Y-%m-%d')}
+Time: {datetime.now().strftime('%H:%M:%S')}
+
+Bullish: 08:46 AM Moon-Jupiter
+Bearish: 12:20 PM Moon-Saturn
+Strategy: Buy dips morning, sell rallies afternoon
+
+[GOOD] Analysis complete"""
+                    
+                    success, msg = send_to_telegram(diag_astro)
+                    if success:
+                        st.balloons()
+                        st.success(f"✅ Diagnostic format + astro data worked!")
+                        st.info("💡 **Solution found! Use this simpler format for astro reports**")
+                    else:
+                        st.error(f"❌ Diagnostic + astro failed: {msg}")
+                
+                # Show what we're learning
+                st.subheader("🔍 What We're Learning")
+                st.write("**Working Messages:**")
+                st.write("✅ 'Hello from Aayeshatech Bot!'")
+                st.write("✅ Diagnostic test with time and [GOOD] tags")
+                st.write("✅ Manual API browser test")
+                
+                st.write("**Failing Messages:**") 
+                st.write("❌ Generated astro reports (666 chars)")
+                st.write("❌ All formatting variations tried")
+                st.write("❌ Even simple line-by-line tests")
+                
+                st.info("🎯 **Next Step:** If 'Diagnostic Format + Astro Data' works, we'll redesign the report generator to use that proven format!")
                 
                 # Download option
                 st.download_button(
