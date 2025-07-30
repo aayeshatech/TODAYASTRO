@@ -9,31 +9,42 @@ import requests
 BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
 CHAT_ID = '-1002840229810'
 
-# Symbol-specific planetary rulers and aspects
-SYMBOL_ASPECTS = {
+# Predefined symbol configurations
+PREDEFINED_SYMBOLS = {
     'GOLD': {
         'bullish': [('Su','Ju'), ('Mo','Ju'), ('Ju','Ve')],
         'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Mo','Ke')],
         'neutral': [('Mo','Me'), ('Mo','Su')],
-        'strength': 1.2
+        'strength': 1.2,
+        'rulers': {'primary': 'Su', 'secondary': 'Ju', 'caution': 'Sa'}
     },
     'SILVER': {
         'bullish': [('Mo','Ve'), ('Ve','Ju'), ('Su','Ve')],
         'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
         'neutral': [('Mo','Me'), ('Su','Me')],
-        'strength': 1.1
+        'strength': 1.1,
+        'rulers': {'primary': 'Mo', 'secondary': 'Ve', 'caution': 'Sa'}
     },
     'NIFTY': {
         'bullish': [('Ju','Me'), ('Mo','Ju'), ('Su','Ju')],
         'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Ma','Sa')],
         'neutral': [('Mo','Me'), ('Ve','Me')],
-        'strength': 1.0
+        'strength': 1.0,
+        'rulers': {'primary': 'Ju', 'secondary': 'Me', 'caution': 'Sa'}
     },
     'BANKNIFTY': {
         'bullish': [('Me','Ju'), ('Ma','Ju'), ('Su','Me')],
         'bearish': [('Sa','Ma'), ('Mo','Ra'), ('Sa','Ke')],
         'neutral': [('Mo','Ve'), ('Ju','Ve')],
-        'strength': 1.3
+        'strength': 1.3,
+        'rulers': {'primary': 'Me', 'secondary': 'Ju', 'caution': 'Sa'}
+    },
+    'DEFAULT': {
+        'bullish': [('Mo','Ju'), ('Su','Ju'), ('Ju','Ve')],
+        'bearish': [('Mo','Sa'), ('Sa','Ra'), ('Mo','Ke')],
+        'neutral': [('Mo','Me'), ('Mo','Su')],
+        'strength': 1.0,
+        'rulers': {'primary': 'Ju', 'secondary': 'Su', 'caution': 'Sa'}
     }
 }
 
@@ -69,19 +80,19 @@ def parse_kp_astro(file_path):
         st.error(f"Error parsing file: {str(e)}")
         return pd.DataFrame()
 
+def get_symbol_config(symbol):
+    """Get configuration for symbol (predefined or default)"""
+    symbol = symbol.upper()
+    return PREDEFINED_SYMBOLS.get(symbol, PREDEFINED_SYMBOLS['DEFAULT'])
+
 def generate_symbol_report(symbol, kp_data):
     """Generate symbol-specific astro report"""
     try:
-        if symbol not in SYMBOL_ASPECTS:
-            st.warning(f"No specific aspects defined for {symbol}, using default analysis")
-            symbol = 'NIFTY'  # Fallback to NIFTY configuration
-        
-        symbol_config = SYMBOL_ASPECTS[symbol]
+        symbol_config = get_symbol_config(symbol)
         
         # Convert times to IST
         kp_data['Time_IST'] = kp_data['DateTime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata')
         kp_data['Time_Str'] = kp_data['Time_IST'].dt.strftime('%I:%M %p')
-        kp_data['Hour'] = kp_data['Time_IST'].dt.hour
         
         # Find all relevant aspects for this symbol
         aspects = []
@@ -125,7 +136,8 @@ def generate_symbol_report(symbol, kp_data):
         
         # Add all aspects sorted by time
         for aspect in sorted(aspects, key=lambda x: x['Time']):
-            report.append(f"{aspect['Time']} | {aspect['Aspect']:8} | {aspect['Sentiment']}")
+            emoji = "✅" if aspect['Sentiment'] == 'Bullish' else "⚠️" if aspect['Sentiment'] == 'Bearish' else "🔸"
+            report.append(f"{aspect['Time']} | {aspect['Aspect']:8} | {emoji} {aspect['Sentiment']}")
         
         # Add trading recommendations
         bullish_times = [a['Time'] for a in aspects if a['Sentiment'] == 'Bullish']
@@ -139,9 +151,10 @@ def generate_symbol_report(symbol, kp_data):
             "📉 Best Selling Times:",
             *[f"⚠️ {time}" for time in bearish_times[:3]],
             "",
-            f"💡 {symbol} Planetary Rulers:",
-            f"Primary: {symbol_config['bullish'][0][0]} (Bullish)",
-            f"Caution: {symbol_config['bearish'][0][0]} (Bearish)",
+            f"💡 {symbol.upper()} Planetary Rulers:",
+            f"Primary: {symbol_config['rulers']['primary']} (Bullish)",
+            f"Secondary: {symbol_config['rulers']['secondary']} (Neutral)",
+            f"Caution: {symbol_config['rulers']['caution']} (Bearish)",
             "",
             "⚠️ Note: Timing based on planetary transits. Confirm with technicals."
         ])
@@ -168,8 +181,8 @@ def send_to_telegram(message):
         return False, "❌ Connection error"
 
 def main():
-    st.set_page_config(page_title="Symbol Astro Tracker", layout="centered")
-    st.title("🌌 Symbol-Specific Astro Report")
+    st.set_page_config(page_title="Astro Symbol Tracker", layout="centered")
+    st.title("🌠 Symbol-Specific Astro Report")
     
     # File upload
     uploaded_file = st.file_uploader("Upload kp_astro.txt", type="txt")
@@ -193,11 +206,24 @@ def main():
         return
     
     # Symbol input
-    symbol = st.selectbox(
-        "Select Symbol",
-        options=list(SYMBOL_ASPECTS.keys()),
-        index=0
+    input_method = st.radio(
+        "Select Symbol Input Method",
+        options=["Choose from predefined", "Enter custom symbol"],
+        horizontal=True
     )
+    
+    if input_method == "Choose from predefined":
+        symbol = st.selectbox(
+            "Select Symbol",
+            options=list(PREDEFINED_SYMBOLS.keys())[:-1],  # Exclude DEFAULT
+            index=0
+        )
+    else:
+        symbol = st.text_input(
+            "Enter Custom Symbol",
+            value="GOLD",
+            help="Enter any symbol name (will use default astro configuration)"
+        ).upper()
     
     if st.button("Generate Symbol Report"):
         with st.spinner(f"Analyzing {symbol} aspects..."):
@@ -210,7 +236,7 @@ def main():
             st.subheader(f"{symbol} Astro Report")
             st.code(report)
             
-            if st.button("Send to Telegram"):
+            if st.button("📤 Send to Telegram"):
                 success, msg = send_to_telegram(report)
                 if success:
                     st.success(msg)
