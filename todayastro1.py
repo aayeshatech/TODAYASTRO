@@ -1,333 +1,188 @@
-import swisseph as swe
-from datetime import datetime, timedelta
-import pytz
-import requests
-import logging
 import pandas as pd
+from datetime import datetime
+import pytz
+import re
 
-# ========== Constants ==========
-RAHU = swe.MEAN_NODE
-KETU = swe.TRUE_NODE
-
-# ========== Setup ==========
-logging.basicConfig(
-    level=logging.INFO,
-    filename='astro_market_signals.log',
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-try:
-    swe.set_ephe_path('/usr/share/ephe')
-    swe.set_sid_mode(swe.SIDM_LAHIRI)
-except Exception as e:
-    logging.error(f"Ephemeris setup error: {e}")
-    raise
-
-# Telegram config
-BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
-CHAT_ID = '-1002840229810'
-
-# ========== Market Groups ==========
-EQUITY_MARKETS = {
-    'NIFTY50': 'NSE:NIFTY',
-    'BANKNIFTY': 'NSE:BANKNIFTY',
-    'SBIN': 'NSE:SBIN',
-    'RELIANCE': 'NSE:RELIANCE'
-}
-
-COMMODITY_MARKETS = {
-    'GOLD': 'MCX:GOLD',
-    'SILVER': 'MCX:SILVER',
-    'CRUDEOIL': 'MCX:CRUDEOIL',
-    'BTCUSD': 'BINANCE:BTCUSDT',
-    'DOW30': 'US:DOW'
-}
-
-# ========== Astro Config ==========
-BULLISH_PLANETS = [swe.JUPITER, swe.VENUS, swe.MOON]
-BEARISH_PLANETS = [swe.SATURN, swe.MARS, RAHU]
-NEUTRAL_PLANETS = [swe.MERCURY, KETU]
-
-NAKSHATRA_GROUPS = {
-    'bullish': ["Rohini", "Pushya", "Shravana", "Hasta", "Ashwini"],
-    'bearish': ["Ardra", "Jyeshtha", "Mula", "Bharani", "Magha"]
-}
-
-# ========== Helper Functions ==========
-def get_planet_position(jd, planet):
-    try:
-        pos, flags = swe.calc_ut(jd, planet)
-        return {
-            'longitude': pos[0],
-            'latitude': pos[1],
-            'speed': pos[3] if len(pos) > 3 else 0,
-            'sign': get_sign_name(pos[0]),
-            'nakshatra': get_nakshatra(pos[0])
-        }
-    except Exception as e:
-        logging.error(f"Error getting position for planet {planet}: {e}")
-        return None
-
-def get_sign_name(longitude):
-    signs = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
-             "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
-    return signs[int(longitude / 30)]
-
-def get_nakshatra(longitude):
-    nakshatras = [
-        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha", "Ardra",
-        "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
-        "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
-        "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta",
-        "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
-    ]
-    longitude = longitude % 360
-    return nakshatras[int(longitude / (360/27))]
-
-def get_planet_aspects(jd, planet):
-    aspects = []
-    for target in [swe.SUN, swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS, 
-                   swe.JUPITER, swe.SATURN, RAHU, KETU]:
-        if planet == target:
-            continue
-        
-        try:
-            pos1 = swe.calc_ut(jd, planet)[0]
-            pos2 = swe.calc_ut(jd, target)[0]
-            aspect_degree = abs(pos1 - pos2) % 360
-            if aspect_degree > 180:
-                aspect_degree = 360 - aspect_degree
+# ========== KP Astro Data Parser ==========
+def parse_kp_astro(file_path):
+    data = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            if not line.strip() or line.startswith('Planet'):
+                continue
+            parts = re.split(r'\s+', line.strip())
             
-            if aspect_degree < 8:  # Tight orb for significant aspects
-                aspects.append({
-                    'planet': target,
-                    'degree': aspect_degree,
-                    'type': get_aspect_type(planet, target)
-                })
-        except Exception as e:
-            logging.error(f"Aspect calculation error: {e}")
+            # Parse date and time
+            date_time = datetime.strptime(f"{parts[1]} {parts[2]}", '%Y-%m-%d %H:%M:%S')
+            
+            data.append({
+                'Planet': parts[0],
+                'DateTime': date_time,
+                'Motion': parts[3],
+                'Sign_Lord': parts[4],
+                'Star_Lord': parts[5],
+                'Sub_Lord': parts[6],
+                'Zodiac': parts[7],
+                'Nakshatra': parts[8],
+                'Pada': parts[9],
+                'Position': parts[10],
+                'Declination': parts[11]
+            })
+    return pd.DataFrame(data)
+
+# ========== Market Analysis Engine ==========
+class AstroMarketAnalyzer:
+    def __init__(self, kp_data):
+        self.kp_data = kp_data
+        self.bullish_naks = ["Hasta", "Rohini", "Pushya", "Shravana"]
+        self.bearish_naks = ["Ardra", "Jyeshtha", "Mula", "Bharani"]
+        
+        self.bullish_combinations = [
+            ('Mo', 'Ju'), ('Ve', 'Ju'), ('Mo', 'Ve')
+        ]
+        self.bearish_combinations = [
+            ('Mo', 'Sa'), ('Ma', 'Sa'), ('Mo', 'Ra')
+        ]
     
-    return aspects
-
-def get_aspect_type(planet1, planet2):
-    if planet1 in BULLISH_PLANETS and planet2 in BULLISH_PLANETS:
-        return 'harmonious'
-    elif planet1 in BEARISH_PLANETS and planet2 in BEARISH_PLANETS:
-        return 'stressful'
-    else:
-        return 'neutral'
-
-def analyze_market_sentiment(jd, market_type):
-    try:
-        if market_type == 'equity':
-            planet = swe.MOON  # Equities are Moon-sensitive
-        else:
-            planet = swe.SUN  # Commodities are Sun-sensitive
+    def analyze_symbol(self, symbol, start_time=None, end_time=None):
+        if start_time is None:
+            start_time = self.kp_data['DateTime'].min()
+        if end_time is None:
+            end_time = self.kp_data['DateTime'].max()
+            
+        filtered = self.kp_data[
+            (self.kp_data['DateTime'] >= start_time) & 
+            (self.kp_data['DateTime'] <= end_time)
+        ].copy()
         
-        position = get_planet_position(jd, planet)
-        if position is None:
-            return '⚪ ERROR'
+        results = []
         
-        aspects = get_planet_aspects(jd, planet)
+        for _, row in filtered.iterrows():
+            signal = self._get_signal_strength(row)
+            results.append({
+                'DateTime': row['DateTime'],
+                'Planet': row['Planet'],
+                'Nakshatra': row['Nakshatra'],
+                'Sign_Lord': row['Sign_Lord'],
+                'Star_Lord': row['Star_Lord'],
+                'Sub_Lord': row['Sub_Lord'],
+                'Signal': signal,
+                'Recommendation': self._get_recommendation(signal)
+            })
         
-        bull_factor = 0
-        bear_factor = 0
-        
-        # Aspect analysis
-        for aspect in aspects:
-            if aspect['type'] == 'harmonious':
-                bull_factor += 2 if aspect['degree'] < 3 else 1
-            elif aspect['type'] == 'stressful':
-                bear_factor += 2 if aspect['degree'] < 3 else 1
+        return pd.DataFrame(results)
+    
+    def _get_signal_strength(self, row):
+        score = 0
         
         # Nakshatra influence
-        if position['nakshatra'] in NAKSHATRA_GROUPS['bullish']:
-            bull_factor += 1
-        elif position['nakshatra'] in NAKSHATRA_GROUPS['bearish']:
-            bear_factor += 1
-        
+        if row['Nakshatra'] in self.bullish_naks:
+            score += 1
+        elif row['Nakshatra'] in self.bearish_naks:
+            score -= 1
+            
+        # Planetary combinations
+        current_combo = (row['Star_Lord'], row['Sub_Lord'])
+        if current_combo in self.bullish_combinations:
+            score += 2
+        elif current_combo in self.bearish_combinations:
+            score -= 2
+            
+        # Moon specific rules
+        if row['Planet'] == 'Mo':
+            if row['Sub_Lord'] in ['Ju', 'Ve']:
+                score += 1
+            elif row['Sub_Lord'] in ['Sa', 'Ra']:
+                score -= 1
+                
         # Determine final signal
-        if bull_factor > bear_factor + 2:
+        if score >= 2:
             return '🟢 STRONG BULLISH'
-        elif bull_factor > bear_factor:
+        elif score > 0:
             return '🟢 Mild Bullish'
-        elif bear_factor > bull_factor + 2:
+        elif score <= -2:
             return '🔴 STRONG BEARISH'
-        elif bear_factor > bull_factor:
+        elif score < 0:
             return '🔴 Mild Bearish'
         else:
             return '⚪ NEUTRAL'
-    except Exception as e:
-        logging.error(f"Sentiment analysis error: {e}")
-        return '⚪ ERROR'
-
-def generate_signal_table(start_dt, hours=24):
-    signals = []
-    current = start_dt
-    end = start_dt + timedelta(hours=hours)
     
-    while current <= end:
-        try:
-            jd = swe.julday(current.year, current.month, current.day, 
-                           current.hour + current.minute/60)
-            
-            signals.append({
-                'Timestamp': current,
-                'Equity_Signal': analyze_market_sentiment(jd, 'equity'),
-                'Commodity_Signal': analyze_market_sentiment(jd, 'commodity'),
-                'Moon_Pos': get_planet_position(jd, swe.MOON),
-                'Sun_Pos': get_planet_position(jd, swe.SUN)
-            })
-        except Exception as e:
-            logging.error(f"Signal generation error at {current}: {e}")
-        
-        current += timedelta(minutes=30)
-    
-    return pd.DataFrame(signals)
-
-def generate_transit_timeline(start_dt, hours=24):
-    timeline = []
-    current = start_dt
-    end = start_dt + timedelta(hours=hours)
-    
-    while current <= end:
-        try:
-            jd = swe.julday(current.year, current.month, current.day,
-                           current.hour + current.minute/60)
-            
-            # Check all planets
-            for planet in [swe.SUN, swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS,
-                          swe.JUPITER, swe.SATURN, RAHU, KETU]:
-                aspects = get_planet_aspects(jd, planet)
-                for aspect in aspects:
-                    if aspect['degree'] < 5:  # Only strongest aspects
-                        timeline.append({
-                            'Time': current,
-                            'Planet': swe.get_planet_name(planet),
-                            'Aspect': swe.get_planet_name(aspect['planet']),
-                            'Degree': aspect['degree'],
-                            'Type': aspect['type'],
-                            'Intensity': 'STRONG' if aspect['degree'] < 3 else 'MODERATE'
-                        })
-            
-            # Check for sign changes
-            for planet in [swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS]:
-                pos_now = swe.calc_ut(jd, planet)[0]
-                pos_next = swe.calc_ut(jd + 0.001, planet)[0]
-                if int(pos_now/30) != int(pos_next/30):
-                    timeline.append({
-                        'Time': current,
-                        'Planet': swe.get_planet_name(planet),
-                        'Aspect': f"Entering {get_sign_name(pos_next)}",
-                        'Type': 'sign_change',
-                        'Intensity': 'STRONG'
-                    })
-                    
-        except Exception as e:
-            logging.error(f"Transit timeline error at {current}: {e}")
-        
-        current += timedelta(minutes=15)  # Check every 15 minutes
-    
-    return pd.DataFrame(timeline)
-
-def send_telegram_alert(market, symbol, signal_df, transit_df):
-    try:
-        # Prepare basic info
-        now = datetime.now(pytz.utc)
-        next_4hr = now + timedelta(hours=4)
-        
-        # Get relevant signals
-        upcoming_signals = signal_df[
-            (signal_df['Timestamp'] >= now) & 
-            (signal_df['Timestamp'] <= next_4hr)
-        ]
-        
-        # Get critical transits
-        critical_transits = transit_df[
-            (transit_df['Time'] >= now) & 
-            (transit_df['Time'] <= next_4hr) & 
-            (transit_df['Intensity'] == 'STRONG')
-        ].sort_values('Time').head(5)
-        
-        # Determine current signal
-        if market in EQUITY_MARKETS:
-            current_signal = upcoming_signals.iloc[0]['Equity_Signal']
-            current_pos = upcoming_signals.iloc[0]['Moon_Pos']
+    def _get_recommendation(self, signal):
+        if 'STRONG BULLISH' in signal:
+            return "Strong Buy Opportunity"
+        elif 'Mild Bullish' in signal:
+            return "Moderate Buy"
+        elif 'STRONG BEARISH' in signal:
+            return "Strong Sell Warning"
+        elif 'Mild Bearish' in signal:
+            return "Moderate Sell"
         else:
-            current_signal = upcoming_signals.iloc[0]['Commodity_Signal']
-            current_pos = upcoming_signals.iloc[0]['Sun_Pos']
-        
-        # Build message
-        message = f"""
-📈 *{market} Astro Trading Signal* ({symbol})
-⏰ Next 4 Hours: *{current_signal}*
-📍 Current: {current_pos['sign']} ({current_pos['nakshatra']})
+            return "Neutral - Wait for confirmation"
 
-🔭 *Planetary Positions:*
-- Sun: {get_planet_position(swe.julday(now.year, now.month, now.day), swe.SUN)['nakshatra']}
-- Moon: {get_planet_position(swe.julday(now.year, now.month, now.day), swe.MOON)['nakshatra']}
-- Jupiter: {get_planet_position(swe.julday(now.year, now.month, now.day), swe.JUPITER)['sign']}
-
-🕒 *Critical Aspects Timeline:*
-"""
-        for _, transit in critical_transits.iterrows():
-            emoji = "🟢" if transit['Type'] == 'harmonious' else "🔴"
-            action = "BUY" if transit['Type'] == 'harmonious' else "SELL"
-            
-            message += f"""
-{emoji} *{transit['Time'].astimezone(pytz.timezone('Asia/Kolkata')).strftime('%H:%M')} IST*
-- {transit['Planet']} → {transit['Aspect']} ({transit['Degree']:.1f}°)
-- *Action*: {action} ({transit['Intensity']})
-"""
-        
-        # Add trading strategy
-        message += f"""
-💡 *Trading Strategy:*
-- Strong {('BUY' if 'BULLISH' in current_signal else 'SELL')} during green periods
-- Use tight stops during volatile aspects
-- Best entries during Moon-Jupiter aspects
-"""
-        
-        # Send message
-        response = requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={
-                'chat_id': CHAT_ID,
-                'text': message,
-                'parse_mode': 'Markdown'
-            },
-            timeout=10
-        )
-        logging.info(f"Sent alert for {market} (Status: {response.status_code})")
+# ========== User Interface ==========
+def display_results(symbol, results_df):
+    print(f"\n📈 Astro Trading Signals for {symbol}")
+    print("="*50)
     
-    except Exception as e:
-        logging.error(f"Failed to send alert for {market}: {e}")
+    # Convert datetime to IST
+    results_df['Time (IST)'] = results_df['DateTime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata').dt.strftime('%Y-%m-%d %H:%M')
+    
+    # Display in table format
+    display_cols = ['Time (IST)', 'Planet', 'Nakshatra', 'Signal', 'Recommendation']
+    print(results_df[display_cols].to_string(index=False))
+    
+    # Print summary
+    bullish_times = results_df[results_df['Signal'].str.contains('BULLISH')]['DateTime']
+    bearish_times = results_df[results_df['Signal'].str.contains('BEARISH')]['DateTime']
+    
+    print("\n💡 Trading Strategy Summary:")
+    if not bullish_times.empty:
+        print(f"🟢 Best Buy Times: {bullish_times.min().strftime('%H:%M')} to {bullish_times.max().strftime('%H:%M')}")
+    if not bearish_times.empty:
+        print(f"🔴 Best Sell Times: {bearish_times.min().strftime('%H:%M')} to {bearish_times.max().strftime('%H:%M')}")
 
 # ========== Main Execution ==========
 if __name__ == "__main__":
-    try:
-        # Initialize
-        ist = pytz.timezone('Asia/Kolkata')
-        now = datetime.now(ist)
-        
-        # Generate data
-        logging.info("Generating astro signals...")
-        signal_df = generate_signal_table(now)
-        transit_df = generate_transit_timeline(now)
-        
-        # Send alerts
-        logging.info("Sending alerts...")
-        for market, symbol in EQUITY_MARKETS.items():
-            send_telegram_alert(market, symbol, signal_df, transit_df)
-        
-        for market, symbol in COMMODITY_MARKETS.items():
-            send_telegram_alert(market, symbol, signal_df, transit_df)
-        
-        # Save data
-        signal_df.to_csv('signals.csv', index=False)
-        transit_df.to_csv('transits.csv', index=False)
-        logging.info("Process completed successfully")
+    # Load KP Astro Data
+    kp_df = parse_kp_astro('kpastro.txt')
     
-    except Exception as e:
-        logging.error(f"Main execution failed: {e}")
-        raise
+    # Initialize analyzer
+    analyzer = AstroMarketAnalyzer(kp_df)
+    
+    # User input
+    print("🌟 Aayeshatech Astro Trading Signal Generator 🌟")
+    print("Available symbols: NIFTY, BANKNIFTY, GOLD, CRUDEOIL, BTC")
+    
+    while True:
+        symbol = input("\nEnter symbol (or 'quit' to exit): ").upper()
+        if symbol == 'QUIT':
+            break
+            
+        if symbol not in ['NIFTY', 'BANKNIFTY', 'GOLD', 'CRUDEOIL', 'BTC']:
+            print("Invalid symbol. Please try again.")
+            continue
+            
+        # Get date range input
+        date_str = input("Enter date (YYYY-MM-DD) or press enter for today: ")
+        try:
+            if date_str:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d')
+            else:
+                target_date = datetime.now()
+                
+            start_time = datetime(target_date.year, target_date.month, target_date.day, 0, 0)
+            end_time = datetime(target_date.year, target_date.month, target_date.day, 23, 59)
+            
+            # Generate signals
+            results = analyzer.analyze_symbol(symbol, start_time, end_time)
+            
+            # Display results
+            display_results(symbol, results)
+            
+            # Save to file
+            output_file = f"{symbol.lower()}_signals_{target_date.strftime('%Y%m%d')}.csv"
+            results.to_csv(output_file, index=False)
+            print(f"\n✅ Results saved to {output_file}")
+            
+        except ValueError:
+            print("Invalid date format. Please use YYYY-MM-DD.")
