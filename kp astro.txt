@@ -1,0 +1,12 @@
+Planet	Date	Time	Motion	Sign Lord	Star Lord	Sub Lord	Zodiac	Nakshatra	Pada	Pos in Zodiac	Declination
+Mo	2025-07-30	02:56:24	D	Me	Mo	Ju	Virgo	Hasta	2	13°53'20"	-4.73
+Su	2025-07-30	03:06:06	D	Mo	Sa	Ra	Cancer	Pushya	3	12°53'20"	18.52
+Mo	2025-07-30	06:27:16	D	Me	Mo	Sa	Virgo	Hasta	2	15°40'00"	-5.57
+Mo	2025-07-30	10:38:22	D	Me	Mo	Me	Virgo	Hasta	3	17°46'40"	-6.56
+Ve	2025-07-30	12:58:05	D	Me	Ma	Su	Gemini	Mrigashira	4	04°53'20"	21.83
+Mo	2025-07-30	14:23:37	D	Me	Mo	Ke	Virgo	Hasta	3	19°40'00"	-7.44
+Mo	2025-07-30	15:56:32	D	Me	Mo	Ve	Virgo	Hasta	4	20°26'40"	-7.80
+Ma	2025-07-30	16:17:25	D	Me	Su	Ju	Virgo	Uttaraphalguni	2	01°13'20"	2.43
+Mo	2025-07-30	20:22:29	D	Me	Mo	Su	Virgo	Hasta	4	22°40'00"	-8.83
+Mo	2025-07-30	21:42:24	D	Me	Ma	Ma	Virgo	Chitra	1	23°20'00"	-9.13
+Mo	2025-07-30	23:15:43	D	Me	Ma	Ra	Virgo	Chitra	1	24°06'40"	-9.49
