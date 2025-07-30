@@ -4,6 +4,7 @@ from datetime import datetime
 import re
 import os
 import requests
+import time
 
 # Telegram Configuration
 BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
@@ -145,21 +146,71 @@ def generate_trading_report(symbol, date, kp_data):
         return None
 
 def send_to_telegram(message):
-    """Send message to Telegram"""
+    """Improved Telegram sending with retry logic"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    headers = {'Content-Type': 'application/json'}
+    
+    # Telegram has a 4096 character limit
+    if len(message) > 4000:
+        message = message[:4000] + "\n...[truncated]"
+    
     payload = {
         'chat_id': CHAT_ID,
-        'text': message
+        'text': message,
+        'parse_mode': 'HTML'
     }
+    
+    max_retries = 3
+    retry_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=15)
+            
+            if response.status_code == 200:
+                return True, "Message sent successfully!"
+            
+            # Handle rate limiting (status code 429)
+            if response.status_code == 429:
+                retry_after = int(response.headers.get('Retry-After', retry_delay))
+                st.warning(f"Rate limited. Retrying in {retry_after} seconds...")
+                time.sleep(retry_after)
+                continue
+                
+            error_msg = response.json().get('description', 'Unknown error')
+            return False, f"Telegram API Error: {error_msg}"
+            
+        except requests.exceptions.RequestException as e:
+            if attempt == max_retries - 1:
+                return False, f"Failed after {max_retries} attempts: {str(e)}"
+            time.sleep(retry_delay)
+    
+    return False, "Unknown error occurred"
+
+def test_telegram_connection():
+    """Test if we can connect to Telegram"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
     try:
-        response = requests.post(url, json=payload, timeout=15)
-        return response.status_code == 200
-    except Exception:
-        return False
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return True, "✅ Telegram connection successful!"
+        return False, f"❌ Telegram connection failed (Status: {response.status_code})"
+    except Exception as e:
+        return False, f"❌ Connection error: {str(e)}"
 
 def main():
     st.set_page_config(page_title="Astro Trading Signals", layout="wide")
     st.title("✨ Astro Trading Signal Generator")
+    
+    # Connection test in sidebar
+    with st.sidebar:
+        st.subheader("Telegram Connection")
+        if st.button("Test Telegram Connection"):
+            success, msg = test_telegram_connection()
+            if success:
+                st.success(msg)
+            else:
+                st.error(msg)
     
     # File upload
     uploaded_file = st.file_uploader("Upload KP Astro Data", type="txt")
@@ -208,11 +259,29 @@ def main():
             st.subheader("Astro Trading Signals")
             st.code(report, language='text')
             
-            if st.button("Send to Telegram"):
-                if send_to_telegram(report):
-                    st.success("Signals sent to Telegram!")
+            # Store report in session state
+            st.session_state.generated_report = report
+    
+    # Send to Telegram button (only appears after report generation)
+    if 'generated_report' in st.session_state:
+        if st.button("📤 Send to Telegram"):
+            with st.spinner("Sending to Telegram..."):
+                success, message = send_to_telegram(st.session_state.generated_report)
+                if success:
+                    st.success(message)
+                    st.balloons()
                 else:
-                    st.error("Failed to send to Telegram")
+                    st.error(f"Failed to send: {message}")
+                    
+                    # Show troubleshooting tips
+                    st.warning("""
+                    Telegram Sending Issues? Try:
+                    1. Check your bot token and chat ID
+                    2. Ensure the bot is added to your channel
+                    3. Verify the bot has send message permissions
+                    4. Check for internet connectivity
+                    5. Try again after a few minutes
+                    """)
 
 if __name__ == "__main__":
     main()
