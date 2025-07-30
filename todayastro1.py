@@ -617,11 +617,64 @@ def main():
     # Generate and send report
     if st.button("Generate Report"):
         with st.spinner("Creating symbol-specific astro report..."):
-            report = generate_report(symbol, selected_date, kp_df)
+            # Debug: Show what data we're working with
+            st.write("**🔍 Debug Information:**")
+            st.write(f"• Selected Date: {selected_date}")
+            st.write(f"• Symbol: {symbol}")
+            st.write(f"• KP Data Rows: {len(kp_df)}")
+            st.write(f"• Date Range: {kp_df['DateTime'].min().date()} to {kp_df['DateTime'].max().date()}")
             
-            if report:
-                st.subheader("Report Preview")
-                st.markdown(f"```\n{report}\n```")
+            # Check if we have data for selected date
+            date_data = kp_df[kp_df['DateTime'].dt.date == selected_date]
+            st.write(f"• Data for selected date: {len(date_data)} rows")
+            
+            if len(date_data) == 0:
+                st.error("❌ No astro data found for selected date!")
+                st.info("Try selecting a different date with available data.")
+                
+                # Show available dates
+                available_dates = sorted(kp_df['DateTime'].dt.date.unique())
+                st.write("**Available dates:**")
+                st.write(available_dates[:10])  # Show first 10 dates
+                return
+            
+            # Try generating report with detailed error tracking
+            try:
+                st.info("🔄 Generating astro report...")
+                report = generate_report(symbol, selected_date, kp_df)
+                
+                if report is None:
+                    st.error("❌ Report generation returned None!")
+                    
+                    # Create a simple test report instead
+                    st.info("🔧 Creating simple test report...")
+                    test_report = f"""🚀 Aayeshatech Test Report | {symbol.upper()}
+📅 Date: {selected_date.strftime('%B %d, %Y')}
+🔍 Data Points: {len(date_data)}
+✅ Bot Status: Working
+⚠️ Full analysis temporarily unavailable
+
+🎯 Trading Note: Monitor market carefully today.
+📊 Use standard risk management practices."""
+                    
+                    st.subheader("📋 Simple Test Report")
+                    st.code(test_report)
+                    
+                    if st.button("📱 Send Test Report", key="send_test_report"):
+                        test_success, test_message = send_to_telegram(test_report)
+                        if test_success:
+                            st.success("✅ Test report sent!")
+                        else:
+                            st.error(f"❌ Test report failed: {test_message}")
+                    
+                    return
+                
+                # Report generated successfully
+                st.success(f"✅ Report generated! ({len(report)} characters)")
+                
+                # Show report preview
+                st.subheader("📋 Report Preview")
+                st.text_area("Generated Report:", report, height=200)
                 
                 # Show report stats
                 col1, col2, col3, col4 = st.columns(4)
@@ -636,47 +689,51 @@ def main():
                     status = "✅ OK" if len(report) <= telegram_limit else "⚠️ Too Long"
                     st.metric("Telegram Status", status)
                 
-                # Sending options
-                st.subheader("📤 Send Options")
-                col1, col2 = st.columns(2)
+                # Detailed send section
+                st.subheader("📤 Send to Telegram")
+                
+                # Add character cleaning option
+                if st.checkbox("🧹 Clean special characters", value=True):
+                    clean_report = report.replace('🚀', '').replace('✅', '').replace('⚠️', '').replace('🔸', '').replace('🔹', '')
+                    clean_report = clean_report.replace('📈', '').replace('📉', '').replace('🔄', '').replace('🎯', '')
+                    st.info(f"Cleaned version: {len(clean_report)} characters")
+                else:
+                    clean_report = report
+                
+                col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    if st.button("📱 Send to Telegram", key="send_telegram"):
-                        with st.spinner("Sending to Telegram..."):
-                            # Show what we're sending
-                            st.info(f"📊 Sending report ({len(report)} characters)...")
-                            
-                            success, message = send_to_telegram(report)
+                    if st.button("📱 Send Full Report", key="send_full"):
+                        with st.spinner("Sending full report..."):
+                            success, message = send_to_telegram(clean_report)
                             if success:
                                 st.balloons()
-                                st.success(message)
-                                
-                                # Show confirmation
-                                st.info("💡 **Check your Telegram channel now!**")
-                                st.write(f"Channel: {CHAT_ID}")
-                                
+                                st.success(f"✅ {message}")
                             else:
-                                st.error(f"**Send Failed:** {message}")
+                                st.error(f"❌ Failed: {message}")
                                 
-                                # Show detailed debugging info
-                                st.error("**Debug Information:**")
-                                st.write(f"• Report length: {len(report)} chars")
-                                st.write(f"• Telegram limit: 4096 chars")
-                                st.write(f"• Bot token: Valid")
-                                st.write(f"• Chat ID: {CHAT_ID}")
-                                
-                                # Show troubleshooting
-                                with st.expander("🔧 Troubleshooting Steps"):
-                                    st.write("1. Try the manual test in sidebar")
-                                    st.write("2. Check if message is too long")
-                                    st.write("3. Copy report and send manually")
-                                    st.write("4. Check Telegram channel settings")
+                                # Show raw error for debugging
+                                st.code(f"Raw error: {message}")
                 
                 with col2:
-                    # Alternative - Copy to clipboard
-                    if st.button("📋 Copy Report", key="copy_report"):
-                        st.code(report, language="text")
-                        st.info("📋 Report ready to copy! Select all text above and copy.")
+                    # Send just the title as test
+                    title_only = f"🚀 Aayeshatech Alert | {symbol.upper()} | {selected_date.strftime('%B %d, %Y')}"
+                    if st.button("📝 Send Title Only", key="send_title"):
+                        title_success, title_msg = send_to_telegram(title_only)
+                        if title_success:
+                            st.success("✅ Title sent!")
+                        else:
+                            st.error(f"❌ Title failed: {title_msg}")
+                
+                with col3:
+                    # Send first 500 chars only
+                    short_report = clean_report[:500] + "...\n\n[Report truncated for testing]"
+                    if st.button("✂️ Send Short Version", key="send_short"):
+                        short_success, short_msg = send_to_telegram(short_report)
+                        if short_success:
+                            st.success("✅ Short version sent!")
+                        else:
+                            st.error(f"❌ Short failed: {short_msg}")
                 
                 # Download option
                 st.download_button(
@@ -686,8 +743,24 @@ def main():
                     mime="text/plain"
                 )
                 
-            else:
-                st.error("Could not generate report for selected date")
+            except Exception as e:
+                st.error(f"❌ **Critical Error in Report Generation:**")
+                st.code(f"Error: {str(e)}")
+                st.code(f"Error Type: {type(e).__name__}")
+                
+                # Show the problematic data
+                st.write("**Data causing issues:**")
+                st.dataframe(date_data.head())
+                
+                # Emergency simple report
+                emergency_report = f"🚀 Emergency Report | {symbol.upper()} | {selected_date.strftime('%Y-%m-%d')}\n\nSystem Error: {str(e)}\n\nPlease contact support."
+                
+                if st.button("🚨 Send Emergency Report"):
+                    emerg_success, emerg_msg = send_to_telegram(emergency_report)
+                    if emerg_success:
+                        st.success("✅ Emergency report sent!")
+                    else:
+                        st.error(f"❌ Emergency failed: {emerg_msg}")
 
 if __name__ == "__main__":
     main()
