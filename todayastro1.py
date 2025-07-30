@@ -219,26 +219,51 @@ def generate_report(symbol, date, kp_data):
         # Add symbol-specific risk note
         risk_level = "HIGH" if symbol_config['strength'] > 1.2 else "MODERATE"
         
-        # Format final message
-        sections = [
-            report['title'],
-            "\n📈 Bullish Factors:" if report['bullish'] else "",
-            *report['bullish'],
-            "\n📉 Bearish Factors:" if report['bearish'] else "",
-            *report['bearish'],
-            "\n🔄 Neutral/Volatile:" if report['neutral'] else "",
-            *report['neutral'],
-            "\n🎯 Trading Strategy:",
-            *strategy,
-            f"\n⚠️ Risk Level: {risk_level} | Trade with appropriate position sizing."
-        ]
+        # Create clean sections without extra newlines that might break Telegram
+        sections = []
+        sections.append(report['title'])
         
-        return "\n".join(filter(None, sections))
+        if report['bullish']:
+            sections.append("")
+            sections.append("📈 Bullish Factors:")
+            sections.extend(report['bullish'])
+        
+        if report['bearish']:
+            sections.append("")
+            sections.append("📉 Bearish Factors:")
+            sections.extend(report['bearish'])
+        
+        if report['neutral']:
+            sections.append("")
+            sections.append("🔄 Neutral/Volatile:")
+            sections.extend(report['neutral'])
+        
+        sections.append("")
+        sections.append("🎯 Trading Strategy:")
+        sections.extend(strategy)
+        
+        sections.append("")
+        sections.append(f"⚠️ Risk Level: {risk_level} | Trade with appropriate position sizing.")
+        
+        # Join with single newlines and clean up
+        final_report = "\n".join(sections)
+        
+        # Remove any problematic characters that might break Telegram
+        final_report = final_report.replace('```', '').replace('*', '').replace('_', '').replace('`', '')
+        
+        # Log report details for debugging
+        logging.info(f"Generated report for {symbol} - Length: {len(final_report)} chars")
+        
+        return final_report
     
     except Exception as e:
-        logging.error(f"Report generation error: {str(e)}")
-        st.error(f"Error generating report: {str(e)}")
-        return None
+        error_msg = f"Report generation error: {str(e)}"
+        logging.error(error_msg)
+        st.error(error_msg)
+        
+        # Return a simple fallback report
+        fallback = f"🚀 Aayeshatech Astro Alert | {symbol.upper()} ({date.strftime('%B %d, %Y')})\n\n⚠️ Technical issue generating detailed report.\n\n🔹 Monitor market carefully today\n🔹 Use standard risk management\n\nContact support if issue persists."
+        return fallback
 
 def test_telegram_connection():
     """Test Telegram bot connectivity"""
