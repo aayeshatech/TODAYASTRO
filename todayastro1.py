@@ -247,11 +247,54 @@ def test_telegram_connection():
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             bot_info = response.json()
-            return True, f"✅ Bot connected: {bot_info['result']['first_name']}"
+            bot_name = bot_info['result']['first_name']
+            bot_username = bot_info['result'].get('username', 'No username')
+            return True, f"✅ Bot connected: {bot_name} (@{bot_username})"
         else:
             return False, f"❌ Bot connection failed: {response.status_code}"
     except Exception as e:
         return False, f"❌ Connection test failed: {str(e)}"
+
+def check_chat_permissions():
+    """Check if bot can access the chat"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChat"
+    payload = {'chat_id': CHAT_ID}
+    
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            chat_info = response.json()['result']
+            chat_title = chat_info.get('title', 'Unknown')
+            chat_type = chat_info.get('type', 'Unknown')
+            return True, f"✅ Chat accessible: {chat_title} (Type: {chat_type})"
+        else:
+            error_data = response.json() if response.content else {}
+            error_desc = error_data.get('description', 'Unknown error')
+            return False, f"❌ Chat access failed: {error_desc}"
+    except Exception as e:
+        return False, f"❌ Chat check failed: {str(e)}"
+
+def get_bot_permissions():
+    """Check bot permissions in the chat"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
+    payload = {
+        'chat_id': CHAT_ID,
+        'user_id': BOT_TOKEN.split(':')[0]  # Bot's user ID is the first part of token
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            member_info = response.json()['result']
+            status = member_info.get('status', 'unknown')
+            can_send = member_info.get('can_send_messages', False)
+            return True, f"✅ Bot status: {status}, Can send messages: {can_send}"
+        else:
+            error_data = response.json() if response.content else {}
+            error_desc = error_data.get('description', 'Unknown error')
+            return False, f"❌ Permission check failed: {error_desc}"
+    except Exception as e:
+        return False, f"❌ Permission check failed: {str(e)}"
 
 def send_to_telegram(message):
     """Send message to Telegram with comprehensive error handling"""
@@ -316,35 +359,79 @@ def main():
     st.sidebar.write(f"**Bot Token:** ...{BOT_TOKEN[-10:]}")
     st.sidebar.write(f"**Chat ID:** {CHAT_ID}")
     
-    if st.sidebar.button("🔍 Test Telegram Connection"):
+    # Comprehensive Telegram Testing
+    if st.sidebar.button("🔍 Full Telegram Diagnostic"):
         with st.sidebar:
-            with st.spinner("Testing connection..."):
-                success, result = test_telegram_connection()
-                if success:
-                    st.sidebar.success(result)
-                    
-                    # Send test message
-                    if st.sidebar.button("📤 Send Test Message"):
-                        test_msg = "🤖 Test message from Aayeshatech Astro Bot - Connection successful!"
-                        test_success, test_result = send_to_telegram(test_msg)
-                        if test_success:
-                            st.sidebar.success("✅ Test message sent!")
-                        else:
-                            st.sidebar.error(f"❌ Test failed: {test_result}")
+            with st.spinner("Running full diagnostic..."):
+                # Test 1: Bot Connection
+                st.write("**1. Testing Bot Connection...**")
+                success1, result1 = test_telegram_connection()
+                if success1:
+                    st.success(result1)
                 else:
-                    st.sidebar.error(result)
+                    st.error(result1)
+                    st.stop()
+                
+                # Test 2: Chat Access
+                st.write("**2. Testing Chat Access...**")
+                success2, result2 = check_chat_permissions()
+                if success2:
+                    st.success(result2)
+                else:
+                    st.error(result2)
+                    st.error("**SOLUTION:** Add bot to your channel/group first!")
+                    st.stop()
+                
+                # Test 3: Bot Permissions
+                st.write("**3. Checking Bot Permissions...**")
+                success3, result3 = get_bot_permissions()
+                if success3:
+                    st.success(result3)
+                else:
+                    st.warning(result3)
+                
+                # Test 4: Send Test Message
+                st.write("**4. Sending Test Message...**")
+                test_msg = f"🔧 DIAGNOSTIC TEST from Aayeshatech Bot\n⏰ Time: {datetime.now().strftime('%H:%M:%S')}\n✅ All systems working!"
+                success4, result4 = send_to_telegram(test_msg)
+                if success4:
+                    st.success("✅ Test message sent successfully!")
+                    st.balloons()
+                else:
+                    st.error(f"❌ Test message failed: {result4}")
+                    
+                    # Show specific solutions
+                    if "forbidden" in result4.lower():
+                        st.error("**SOLUTION:** Make bot an admin in the channel")
+                    elif "chat not found" in result4.lower():
+                        st.error("**SOLUTION:** Add bot to the channel first")
+                    elif "insufficient rights" in result4.lower():
+                        st.error("**SOLUTION:** Give bot 'Send Messages' permission")
     
     st.sidebar.markdown("---")
     
     # Telegram Setup Help
     with st.sidebar.expander("🛠️ Telegram Setup Help"):
-        st.write("**Step 1:** Create bot with @BotFather")
-        st.write("**Step 2:** Get bot token")
-        st.write("**Step 3:** Add bot to your channel/group")
-        st.write("**Step 4:** Get Chat ID:")
-        st.code("https://api.telegram.org/bot<TOKEN>/getUpdates")
-        st.write("**Step 5:** Update BOT_TOKEN and CHAT_ID in code")
-        st.write("**Step 6:** Test connection using button above")
+        st.write("**Step-by-Step Setup:**")
+        st.write("1️⃣ Create bot with @BotFather")
+        st.write("2️⃣ Get bot token from BotFather")
+        st.write("3️⃣ **IMPORTANT:** Add bot to your channel/group")
+        st.write("4️⃣ Make bot an admin (or give 'Send Messages' permission)")
+        st.write("5️⃣ Get Chat ID from getUpdates")
+        st.write("6️⃣ Test using 'Full Telegram Diagnostic' above")
+        
+        st.markdown("**📱 For Channels:**")
+        st.write("• Channel must be public OR bot must be admin")
+        st.write("• Chat ID format: -100xxxxxxxxx")
+        
+        st.markdown("**👥 For Groups:**")
+        st.write("• Add bot as member")
+        st.write("• Chat ID format: -xxxxxxxxx")
+        
+        st.markdown("**🔧 Common Issues:**")
+        st.write("• 'Chat not found' → Bot not added to channel")
+        st.write("• 'Forbidden' → Bot lacks permissions")
+        st.write("• 'Bad Request' → Wrong Chat ID format")
     
     # Emergency Debug Section
     with st.sidebar.expander("🔧 Debug Info"):
@@ -354,9 +441,35 @@ def main():
             st.write(f"Chat ID: {'✅ Set' if CHAT_ID else '❌ Missing'}")
             st.write(f"Token Length: {len(BOT_TOKEN) if BOT_TOKEN else 0}")
             st.write(f"Chat ID Type: {type(CHAT_ID).__name__}")
+            st.write(f"Chat ID Format: {'✅ Channel' if str(CHAT_ID).startswith('-100') else '⚠️ Group/Other'}")
             
+            # Show quick test URLs
+            st.markdown("**Quick Test URLs:**")
+            st.code(f"Bot Info: https://api.telegram.org/bot{BOT_TOKEN}/getMe")
+            st.code(f"Updates: https://api.telegram.org/bot{BOT_TOKEN}/getUpdates")
+    
+    # Manual Message Sender
+    with st.sidebar.expander("📤 Manual Message Test"):
+        test_message = st.text_area("Test Message:", "Hello from Aayeshatech Bot! 🚀")
+        if st.button("Send Manual Test"):
+            if test_message.strip():
+                success, result = send_to_telegram(test_message)
+                if success:
+                    st.success("✅ Manual test sent!")
+                else:
+                    st.error(f"❌ Failed: {result}")
+            else:
+                st.warning("Enter a test message first")
+    
+    st.sidebar.markdown("---")
+    
     # Show supported symbols
-    st.sidebar.header("Supported Symbols")
+    st.sidebar.header("📊 Supported Symbols")
+    st.sidebar.write("Optimized for:")
+    for symbol in SYMBOL_RULERS.keys():
+        if symbol != 'DEFAULT':
+            st.sidebar.write(f"• {symbol}")
+    st.sidebar.write("• Any other symbol (default analysis)")
     st.sidebar.write("Optimized for:")
     for symbol in SYMBOL_RULERS.keys():
         if symbol != 'DEFAULT':
