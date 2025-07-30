@@ -1,53 +1,78 @@
 import pandas as pd
 from datetime import datetime
-import warnings
+import re
+import os
+from dotenv import load_dotenv
 
-# Suppress specific warnings
-warnings.filterwarnings('ignore', category=UserWarning, message='Could not infer format')
+# Load environment variables
+load_dotenv()
 
-def parse_datetime_explicitly(df):
-    """Explicit datetime parsing with format specification"""
-    datetime_format = '%Y-%m-%d %H:%M:%S'  # Adjust based on your actual format
+def parse_kp_astro_data(file_path):
+    """Robust parser for KP Astrology data"""
+    columns = ["Planet", "Date", "Time", "Motion", "Sign Lord", "Star Lord", 
+               "Sub Lord", "Zodiac", "Nakshatra", "Pada", "Pos in Zodiac", "Declination"]
     
-    if 'DateTime' in df.columns:
-        df['DateTime'] = pd.to_datetime(df['DateTime'], format=datetime_format, errors='coerce')
-    if 'Date' in df.columns and 'Time' in df.columns:
-        df['DateTime'] = pd.to_datetime(
-            df['Date'] + ' ' + df['Time'],
-            format='%Y-%m-%d %H:%M:%S',  # Example format, adjust as needed
-            errors='coerce'
-        )
+    data = []
+    with open(file_path, 'r') as file:
+        for line in file:
+            if line.strip():
+                # Handle both tab and space delimiters
+                parts = re.split(r'\t|\s{2,}', line.strip())
+                if len(parts) >= len(columns):
+                    data.append(parts[:len(columns)])
+    
+    df = pd.DataFrame(data, columns=columns)
+    
+    # Clean and convert datetime with explicit format
+    try:
+        # Remove any non-standard characters from time
+        df['Time'] = df['Time'].str.replace(r'[^\d:]', '', regex=True)
+        
+        # Combine date and time with explicit format
+        datetime_str = df['Date'] + ' ' + df['Time']
+        df['DateTime'] = pd.to_datetime(datetime_str, 
+                                       format='%Y-%m-%d %H:%M:%S', 
+                                       errors='coerce')
+        
+        # Verify we have valid datetimes
+        if df['DateTime'].isnull().any():
+            print("Warning: Some dates couldn't be parsed. Sample problematic rows:")
+            print(df[df['DateTime'].isnull()].head(2))
+    except Exception as e:
+        print(f"DateTime parsing error: {str(e)}")
+        raise
+    
     return df
 
 def main():
-    print("=== Application Initialized ===")
+    print("KP Astrology Stock Analysis System")
+    print("=================================\n")
     
     try:
-        # 1. Load and process data with explicit datetime format
-        df = pd.read_csv('kp_astro.txt', sep='\t')  # Adjust separator as needed
-        df = parse_datetime_explicitly(df)
+        # 1. Load and parse data
+        data_file = 'kp_astro.txt'  # Update with your actual path
+        if not os.path.exists(data_file):
+            raise FileNotFoundError(f"Data file not found: {data_file}")
         
-        # 2. Add debug output
-        print("\nData Sample:")
-        print(df.head(3))
-        print(f"\nData Shape: {df.shape}")
+        print(f"Loading data from {data_file}...")
+        kp_data = parse_kp_astro_data(data_file)
         
-        # 3. Verify time-based calculations
-        if 'DateTime' in df.columns:
-            print("\nTime Range:", df['DateTime'].min(), "to", df['DateTime'].max())
-            
-            # Example analysis (replace with your actual logic)
-            print("\nPlanetary Motion Summary:")
-            print(df['Motion'].value_counts())
+        # 2. Show data verification
+        print("\nData loaded successfully. Sample:")
+        print(kp_data[['Planet', 'DateTime', 'Zodiac', 'Nakshatra']].head(3))
+        print(f"\nTime range: {kp_data['DateTime'].min()} to {kp_data['DateTime'].max()}")
         
-        # 4. Add explicit completion message
-        print("\n=== Analysis Completed Successfully ===")
+        # 3. Continue with your analysis...
+        stock_symbol = input("\nEnter stock symbol (e.g., NIFTY, SBI): ").strip().upper()
+        print(f"\nStarting analysis for {stock_symbol}...")
+        
+        # [Add your analysis logic here]
+        
+        print("\nAnalysis completed successfully!")
         
     except Exception as e:
-        print(f"\n!!! Error: {str(e)}")
-        print("Check your data format and script logic")
+        print(f"\nError occurred: {str(e)}")
+        print("Stopping...")
 
 if __name__ == "__main__":
-    print("Starting application...")
     main()
-    print("Application finished")
