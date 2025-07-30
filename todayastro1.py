@@ -4,30 +4,37 @@ from datetime import datetime
 import re
 import os
 import requests
-import time
 
 # Telegram Configuration
 BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
 CHAT_ID = '-1002840229810'
 
-# Aspect interpretations
-ASPECTS = {
-    ('Mo','Ju'): "Bullish",
-    ('Mo','Ve'): "Bullish",
-    ('Mo','Sa'): "Bearish",
-    ('Mo','Ra'): "Bearish",
-    ('Mo','Ke'): "Bearish",
-    ('Mo','Me'): "Neutral",
-    ('Mo','Su'): "Neutral",
-    ('Su','Ju'): "Strong Bullish",
-    ('Su','Ve'): "Bullish",
-    ('Su','Sa'): "Strong Bearish",
-    ('Ma','Ju'): "Aggressive Bullish",
-    ('Ma','Ve'): "Bullish",
-    ('Ma','Sa'): "Bearish",
-    ('Ju','Ve'): "Long Bullish",
-    ('Sa','Ra'): "Strong Bearish",
-    ('Ra','Ke'): "Extreme Bearish"
+# Symbol-specific planetary rulers and aspects
+SYMBOL_ASPECTS = {
+    'GOLD': {
+        'bullish': [('Su','Ju'), ('Mo','Ju'), ('Ju','Ve')],
+        'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Mo','Ke')],
+        'neutral': [('Mo','Me'), ('Mo','Su')],
+        'strength': 1.2
+    },
+    'SILVER': {
+        'bullish': [('Mo','Ve'), ('Ve','Ju'), ('Su','Ve')],
+        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
+        'neutral': [('Mo','Me'), ('Su','Me')],
+        'strength': 1.1
+    },
+    'NIFTY': {
+        'bullish': [('Ju','Me'), ('Mo','Ju'), ('Su','Ju')],
+        'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Ma','Sa')],
+        'neutral': [('Mo','Me'), ('Ve','Me')],
+        'strength': 1.0
+    },
+    'BANKNIFTY': {
+        'bullish': [('Me','Ju'), ('Ma','Ju'), ('Su','Me')],
+        'bearish': [('Sa','Ma'), ('Mo','Ra'), ('Sa','Ke')],
+        'neutral': [('Mo','Ve'), ('Ju','Ve')],
+        'strength': 1.3
+    }
 }
 
 def parse_kp_astro(file_path):
@@ -63,21 +70,44 @@ def parse_kp_astro(file_path):
         return pd.DataFrame()
 
 def generate_symbol_report(symbol, kp_data):
-    """Generate report for specific symbol"""
+    """Generate symbol-specific astro report"""
     try:
+        if symbol not in SYMBOL_ASPECTS:
+            st.warning(f"No specific aspects defined for {symbol}, using default analysis")
+            symbol = 'NIFTY'  # Fallback to NIFTY configuration
+        
+        symbol_config = SYMBOL_ASPECTS[symbol]
+        
         # Convert times to IST
         kp_data['Time_IST'] = kp_data['DateTime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata')
         kp_data['Time_Str'] = kp_data['Time_IST'].dt.strftime('%I:%M %p')
+        kp_data['Hour'] = kp_data['Time_IST'].dt.hour
         
-        # Find all aspects for the symbol
+        # Find all relevant aspects for this symbol
         aspects = []
         for _, row in kp_data.iterrows():
-            aspect_key = (row['Planet'], row['Sub_Lord'])
-            if aspect_key in ASPECTS:
+            aspect = (row['Planet'], row['Sub_Lord'])
+            
+            if aspect in symbol_config['bullish']:
                 aspects.append({
                     'Time': row['Time_Str'],
                     'Aspect': f"{row['Planet']}-{row['Sub_Lord']}",
-                    'Sentiment': ASPECTS[aspect_key]
+                    'Sentiment': 'Bullish',
+                    'Strength': symbol_config['strength']
+                })
+            elif aspect in symbol_config['bearish']:
+                aspects.append({
+                    'Time': row['Time_Str'],
+                    'Aspect': f"{row['Planet']}-{row['Sub_Lord']}",
+                    'Sentiment': 'Bearish',
+                    'Strength': symbol_config['strength']
+                })
+            elif aspect in symbol_config['neutral']:
+                aspects.append({
+                    'Time': row['Time_Str'],
+                    'Aspect': f"{row['Planet']}-{row['Sub_Lord']}",
+                    'Sentiment': 'Neutral',
+                    'Strength': symbol_config['strength']
                 })
         
         if not aspects:
@@ -87,27 +117,33 @@ def generate_symbol_report(symbol, kp_data):
         report = [
             f"🌟 {symbol.upper()} Astro Trading Report 🌟",
             f"📅 Date: {datetime.now().strftime('%d %b %Y')}",
+            f"📊 Symbol Strength: {symbol_config['strength']}x",
             "",
             "🕒 Time    | 🔄 Aspect      | 📊 Sentiment",
             "―――――――――――――――――――――――――――――――――――――――"
         ]
         
-        for aspect in aspects:
+        # Add all aspects sorted by time
+        for aspect in sorted(aspects, key=lambda x: x['Time']):
             report.append(f"{aspect['Time']} | {aspect['Aspect']:8} | {aspect['Sentiment']}")
         
-        # Add summary
-        bullish = [a for a in aspects if "Bullish" in a['Sentiment']]
-        bearish = [a for a in aspects if "Bearish" in a['Sentiment']]
+        # Add trading recommendations
+        bullish_times = [a['Time'] for a in aspects if a['Sentiment'] == 'Bullish']
+        bearish_times = [a['Time'] for a in aspects if a['Sentiment'] == 'Bearish']
         
         report.extend([
             "",
-            "📈 Bullish Aspects:",
-            *[f"✅ {a['Time']} - {a['Aspect']}" for a in bullish[:3]],  # Top 3 bullish
+            "📈 Best Buying Times:",
+            *[f"✅ {time}" for time in bullish_times[:3]],
             "",
-            "📉 Bearish Aspects:",
-            *[f"⚠️ {a['Time']} - {a['Aspect']}" for a in bearish[:3]],  # Top 3 bearish
+            "📉 Best Selling Times:",
+            *[f"⚠️ {time}" for time in bearish_times[:3]],
             "",
-            "⚠️ Note: Combine with technical analysis for best results"
+            f"💡 {symbol} Planetary Rulers:",
+            f"Primary: {symbol_config['bullish'][0][0]} (Bullish)",
+            f"Caution: {symbol_config['bearish'][0][0]} (Bearish)",
+            "",
+            "⚠️ Note: Timing based on planetary transits. Confirm with technicals."
         ])
         
         return "\n".join(report)
@@ -117,7 +153,7 @@ def generate_symbol_report(symbol, kp_data):
         return None
 
 def send_to_telegram(message):
-    """Send message to Telegram with retries"""
+    """Send message to Telegram"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         'chat_id': CHAT_ID,
@@ -125,20 +161,15 @@ def send_to_telegram(message):
         'parse_mode': 'Markdown'
     }
     
-    for _ in range(3):  # 3 retries
-        try:
-            response = requests.post(url, json=payload, timeout=10)
-            if response.status_code == 200:
-                return True, "✅ Report sent to Telegram!"
-            time.sleep(2)
-        except Exception as e:
-            time.sleep(2)
-    
-    return False, "❌ Failed to send to Telegram after 3 attempts"
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        return response.status_code == 200, "✅ Report sent to Telegram!" if response.status_code == 200 else "❌ Failed to send"
+    except Exception:
+        return False, "❌ Connection error"
 
 def main():
-    st.set_page_config(page_title="Astro Signal Finder", layout="centered")
-    st.title("🔍 Astro Aspect Finder")
+    st.set_page_config(page_title="Symbol Astro Tracker", layout="centered")
+    st.title("🌌 Symbol-Specific Astro Report")
     
     # File upload
     uploaded_file = st.file_uploader("Upload kp_astro.txt", type="txt")
@@ -146,7 +177,7 @@ def main():
         try:
             with open("kp_astro.txt", "wb") as f:
                 f.write(uploaded_file.getbuffer())
-            st.success("File uploaded successfully!")
+            st.success("KP Astro data loaded!")
         except Exception as e:
             st.error(f"Error: {str(e)}")
             return
@@ -158,30 +189,34 @@ def main():
     # Load data
     kp_data = parse_kp_astro("kp_astro.txt")
     if kp_data.empty:
-        st.error("No valid data found in the file")
+        st.error("No valid data found in file")
         return
     
     # Symbol input
-    symbol = st.text_input("Enter Symbol (e.g., NIFTY, BANKNIFTY, GOLD)", "NIFTY").upper()
+    symbol = st.selectbox(
+        "Select Symbol",
+        options=list(SYMBOL_ASPECTS.keys()),
+        index=0
+    )
     
-    if st.button("Generate & Send Report"):
-        with st.spinner("Analyzing planetary aspects..."):
+    if st.button("Generate Symbol Report"):
+        with st.spinner(f"Analyzing {symbol} aspects..."):
             report = generate_symbol_report(symbol, kp_data)
             
             if not report:
-                st.error("No relevant aspects found for this symbol")
+                st.error("No relevant aspects found for selected date")
                 return
             
-            st.subheader("Generated Report")
+            st.subheader(f"{symbol} Astro Report")
             st.code(report)
             
-            # Send to Telegram
-            success, msg = send_to_telegram(report)
-            if success:
-                st.success(msg)
-                st.balloons()
-            else:
-                st.error(msg)
+            if st.button("Send to Telegram"):
+                success, msg = send_to_telegram(report)
+                if success:
+                    st.success(msg)
+                    st.balloons()
+                else:
+                    st.error(msg)
 
 if __name__ == "__main__":
     main()
