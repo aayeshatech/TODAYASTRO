@@ -10,7 +10,16 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"  # Example end
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', st.secrets.get("DEEPSEEK_API_KEY", "your_api_key_here"))
 DATA_FILE = 'kp_astro.txt'
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+def check_dependencies():
+    """Check for required packages"""
+    try:
+        import pandas
+        import requests
+    except ImportError as e:
+        st.error(f"Missing required dependency: {str(e)}. Please install with: pip install pandas requests")
+        st.stop()
+
+@st.cache_data(ttl=3600)
 def load_astro_data():
     """Load and preprocess astro data with error handling"""
     try:
@@ -70,6 +79,9 @@ def query_deepseek(prompt, astro_context=""):
         return f"Connection Error: {str(e)}"
 
 def main():
+    # Check dependencies first
+    check_dependencies()
+    
     st.set_page_config(
         page_title="KP Astro Analysis Engine",
         page_icon="🔮",
@@ -103,7 +115,7 @@ def main():
     st.title("🔮 KP Astrological Analysis Engine")
     st.caption(f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # Data table
+    # Data table - using Streamlit's native dataframe display
     st.dataframe(
         filtered_df[['Planet', 'Date', 'Time', 'Motion', 'Sign Lord', 'Star Lord', 'Sub Lord']],
         use_container_width=True,
@@ -120,7 +132,8 @@ def main():
     )
     
     if st.button("Get Analysis", type="primary") and query:
-        context = filtered_df.to_markdown()
+        # Convert DataFrame to string without tabulate
+        context = filtered_df.to_string()
         analysis = query_deepseek(query, context)
         st.markdown("### AI Analysis Result")
         st.markdown(analysis)
