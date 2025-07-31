@@ -1,824 +1,128 @@
-import streamlit as st
+from flask import Flask, render_template, request, jsonify
 import pandas as pd
-from datetime import datetime
-import re
-import os
 import requests
 import json
+import time
 
-# Optional Selenium imports - only import if available
-try:
-    from selenium import webdriver
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.common.keys import Keys
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.chrome.options import Options
-    import time
-    SELENIUM_AVAILABLE = True
-except ImportError:
-    SELENIUM_AVAILABLE = False
+app = Flask(__name__)
 
-# Telegram Configuration
-BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
-CHAT_ID = '-1002840229810'
-
-# Predefined symbol configurations
-PREDEFINED_SYMBOLS = {
-    'GOLD': {
-        'bullish': [('Su','Ju'), ('Mo','Ju'), ('Ju','Ve')],
-        'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Mo','Ke')],
-        'neutral': [('Mo','Me'), ('Mo','Su')],
-        'strength': 1.2,
-        'rulers': {'primary': 'Su', 'secondary': 'Ju', 'caution': 'Sa'}
-    },
-    'SILVER': {
-        'bullish': [('Mo','Ve'), ('Ve','Ju'), ('Su','Ve')],
-        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
-        'neutral': [('Mo','Me'), ('Su','Me')],
-        'strength': 1.1,
-        'rulers': {'primary': 'Mo', 'secondary': 'Ve', 'caution': 'Sa'}
-    },
-    'NIFTY': {
-        'bullish': [('Ju','Me'), ('Mo','Ju'), ('Su','Ju')],
-        'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Ma','Sa')],
-        'neutral': [('Mo','Me'), ('Ve','Me')],
-        'strength': 1.0,
-        'rulers': {'primary': 'Ju', 'secondary': 'Me', 'caution': 'Sa'}
-    },
-    'BANKNIFTY': {
-        'bullish': [('Me','Ju'), ('Ma','Ju'), ('Su','Me')],
-        'bearish': [('Sa','Ma'), ('Mo','Ra'), ('Sa','Ke')],
-        'neutral': [('Mo','Ve'), ('Ju','Ve')],
-        'strength': 1.3,
-        'rulers': {'primary': 'Me', 'secondary': 'Ju', 'caution': 'Sa'}
-    },
-    'CRUDE': {
-        'bullish': [('Ju','Ve'), ('Mo','Ju'), ('Su','Ve')],
-        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
-        'neutral': [('Mo','Me'), ('Ve','Me')],
-        'strength': 1.4,
-        'rulers': {'primary': 'Ve', 'secondary': 'Ju', 'caution': 'Sa'}
-    },
-    'BTC': {
-        'bullish': [('Ju','Me'), ('Mo','Ju'), ('Su','Ju')],
-        'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Ma','Sa')],
-        'neutral': [('Mo','Me'), ('Ve','Me')],
-        'strength': 1.5,
-        'rulers': {'primary': 'Ju', 'secondary': 'Me', 'caution': 'Sa'}
-    },
-    'PHARMA': {
-        'bullish': [('Ju','Ve'), ('Mo','Ju'), ('Su','Ve')],
-        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
-        'neutral': [('Mo','Me'), ('Ve','Me')],
-        'strength': 1.1,
-        'rulers': {'primary': 'Ve', 'secondary': 'Ju', 'caution': 'Sa'}
-    },
-    'FMCG': {
-        'bullish': [('Ju','Ve'), ('Mo','Ju'), ('Su','Ve')],
-        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
-        'neutral': [('Mo','Me'), ('Ve','Me')],
-        'strength': 1.0,
-        'rulers': {'primary': 'Ve', 'secondary': 'Ju', 'caution': 'Sa'}
-    },
-    'AUTO': {
-        'bullish': [('Ju','Me'), ('Mo','Ju'), ('Su','Ju')],
-        'bearish': [('Sa','Ra'), ('Mo','Sa'), ('Ma','Sa')],
-        'neutral': [('Mo','Me'), ('Ve','Me')],
-        'strength': 1.2,
-        'rulers': {'primary': 'Ju', 'secondary': 'Me', 'caution': 'Sa'}
-    },
-    'OIL AND GAS': {
-        'bullish': [('Ju','Ve'), ('Mo','Ju'), ('Su','Ve')],
-        'bearish': [('Sa','Ke'), ('Mo','Sa'), ('Ra','Ke')],
-        'neutral': [('Mo','Me'), ('Ve','Me')],
-        'strength': 1.3,
-        'rulers': {'primary': 'Ve', 'secondary': 'Ju', 'caution': 'Sa'}
-    },
-    'DEFAULT': {
-        'bullish': [('Mo','Ju'), ('Su','Ju'), ('Ju','Ve')],
-        'bearish': [('Mo','Sa'), ('Sa','Ra'), ('Mo','Ke')],
-        'neutral': [('Mo','Me'), ('Mo','Su')],
-        'strength': 1.0,
-        'rulers': {'primary': 'Ju', 'secondary': 'Su', 'caution': 'Sa'}
-    }
-}
-
-def parse_kp_astro(file_path):
-    """Parse KP Astro data file"""
-    data = []
+def load_astro_data():
+    """Load astro data from the text file"""
     try:
-        with open(file_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('Planet'):
-                    continue
-                
-                parts = re.split(r'\s+', line)
-                if len(parts) < 11:
-                    continue
-                
-                try:
-                    dt_str = f"{parts[1]} {parts[2]}"
-                    date_time = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
-                    
-                    data.append({
-                        'Planet': parts[0],
-                        'Date': parts[1],
-                        'Time': parts[2],
-                        'Motion': parts[3],
-                        'Sign_Lord': parts[4],
-                        'Star_Lord': parts[5],
-                        'Sub_Lord': parts[6],
-                        'Zodiac': parts[7],
-                        'Nakshatra': parts[8],
-                        'Pada': parts[9],
-                        'Position': parts[10],
-                        'Declination': parts[11] if len(parts) > 11 else '',
-                        'DateTime': date_time
-                    })
-                except (ValueError, IndexError):
-                    continue
-        
-        return pd.DataFrame(data)
-    
+        df = pd.read_csv('kp_astro.txt', sep='\t')
+        return df
     except Exception as e:
-        st.error(f"Error parsing file: {str(e)}")
+        print(f"Error loading data: {e}")
         return pd.DataFrame()
 
-def get_symbol_config(symbol):
-    """Get configuration for symbol (predefined or default)"""
-    symbol = symbol.upper()
-    return PREDEFINED_SYMBOLS.get(symbol, PREDEFINED_SYMBOLS['DEFAULT'])
-
-def generate_symbol_report(symbol, kp_data):
-    """Generate symbol-specific astro report"""
+def search_deepseek(query):
+    """
+    Simulate DeepSeek AI search - Replace this with actual DeepSeek API call
+    Since DeepSeek API details aren't provided, this is a placeholder
+    """
     try:
-        symbol_config = get_symbol_config(symbol)
+        # This is a placeholder - replace with actual DeepSeek API endpoint
+        # For demonstration, I'm using a mock response
         
-        # Convert times to IST
-        kp_data['Time_IST'] = kp_data['DateTime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata')
-        kp_data['Time_Str'] = kp_data['Time_IST'].dt.strftime('%I:%M %p')
+        mock_response = {
+            "query": query,
+            "response": f"DeepSeek AI Analysis for '{query}':\n\nBased on the astrological data provided, here are the key insights:\n\n1. Planetary Movements: The query relates to planetary positions and their influences.\n2. Astrological Significance: The positions indicate specific cosmic energies.\n3. Timing: The dates and times are crucial for accurate predictions.\n4. Recommendations: Consider the planetary aspects for decision making.\n\nNote: This is a simulated response. Please integrate with actual DeepSeek API for real results.",
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
         
-        # Find all relevant aspects for this symbol
-        aspects = []
-        for _, row in kp_data.iterrows():
-            aspect = (row['Planet'], row['Sub_Lord'])
-            
-            if aspect in symbol_config['bullish']:
-                aspects.append({
-                    'Time': row['Time_Str'],
-                    'Aspect': f"{row['Planet']}-{row['Sub_Lord']}",
-                    'Sentiment': 'Bullish',
-                    'Strength': symbol_config['strength']
-                })
-            elif aspect in symbol_config['bearish']:
-                aspects.append({
-                    'Time': row['Time_Str'],
-                    'Aspect': f"{row['Planet']}-{row['Sub_Lord']}",
-                    'Sentiment': 'Bearish',
-                    'Strength': symbol_config['strength']
-                })
-            elif aspect in symbol_config['neutral']:
-                aspects.append({
-                    'Time': row['Time_Str'],
-                    'Aspect': f"{row['Planet']}-{row['Sub_Lord']}",
-                    'Sentiment': 'Neutral',
-                    'Strength': symbol_config['strength']
-                })
+        # Uncomment and modify this section when you have actual DeepSeek API access
+        """
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer YOUR_DEEPSEEK_API_KEY'
+        }
         
-        if not aspects:
-            return None
+        payload = {
+            'query': query,
+            'context': 'astrological_data'
+        }
         
-        # Create report
-        report = [
-            f"🌟 {symbol.upper()} Astro Trading Report 🌟",
-            f"📅 Date: {datetime.now().strftime('%d %b %Y')}",
-            f"📊 Symbol Strength: {symbol_config['strength']}x",
-            "",
-            "🕒 Time    | 🔄 Aspect      | 📊 Sentiment",
-            "―――――――――――――――――――――――――――――――――――――――"
-        ]
+        response = requests.post('https://chat.deepseek.com/api/chat', 
+                               headers=headers, 
+                               json=payload, 
+                               timeout=30)
         
-        # Add all aspects sorted by time
-        for aspect in sorted(aspects, key=lambda x: x['Time']):
-            emoji = "✅" if aspect['Sentiment'] == 'Bullish' else "⚠️" if aspect['Sentiment'] == 'Bearish' else "🔸"
-            report.append(f"{aspect['Time']} | {aspect['Aspect']:8} | {emoji} {aspect['Sentiment']}")
-        
-        # Add trading recommendations
-        bullish_times = [a['Time'] for a in aspects if a['Sentiment'] == 'Bullish']
-        bearish_times = [a['Time'] for a in aspects if a['Sentiment'] == 'Bearish']
-        
-        report.extend([
-            "",
-            "📈 Best Buying Times:",
-            *[f"✅ {time}" for time in bullish_times[:3]],
-            "",
-            "📉 Best Selling Times:",
-            *[f"⚠️ {time}" for time in bearish_times[:3]],
-            "",
-            f"💡 {symbol.upper()} Planetary Rulers:",
-            f"Primary: {symbol_config['rulers']['primary']} (Bullish)",
-            f"Secondary: {symbol_config['rulers']['secondary']} (Neutral)",
-            f"Caution: {symbol_config['rulers']['caution']} (Bearish)",
-            "",
-            "⚠️ Note: Timing based on planetary transits. Confirm with technicals."
-        ])
-        
-        return "\n".join(report)
-    
-    except Exception as e:
-        st.error(f"Report error: {str(e)}")
-        return None
-
-def send_to_telegram(message):
-    """Send message to Telegram"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        'chat_id': CHAT_ID,
-        'text': message,
-        'parse_mode': 'Markdown'
-    }
-    
-    try:
-        response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
-            return True, "✅ Report sent to Telegram!"
+            return response.json()
         else:
-            error_msg = f"❌ Telegram API Error: {response.status_code} - {response.text}"
-            return False, error_msg
+            return {"error": f"API Error: {response.status_code}"}
+        """
+        
+        return mock_response
+        
     except Exception as e:
-        return False, f"❌ Connection error: {str(e)}"
+        return {"error": f"Error connecting to DeepSeek: {str(e)}"}
 
-def setup_webdriver():
-    """Setup Chrome webdriver with appropriate options"""
-    if not SELENIUM_AVAILABLE:
-        return None
-        
-    try:
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")  # Run in background
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-        
-        driver = webdriver.Chrome(options=chrome_options)
-        return driver
-    except Exception as e:
-        st.error(f"Failed to setup webdriver: {str(e)}")
-        return None
-
-def query_deepseek_ai(query_text, kp_data=None):
-    """
-    Smart AI query with automatic fallback for cloud environments
-    """
-    # Check if we're likely running on Streamlit Cloud
-    if os.environ.get('STREAMLIT_SHARING') or 'streamlit.io' in os.environ.get('HOSTNAME', ''):
-        # Force fallback mode on Streamlit Cloud
-        return query_deepseek_ai_fallback(query_text, kp_data)
+@app.route('/')
+def index():
+    """Main page route"""
+    df = load_astro_data()
     
-    if not SELENIUM_AVAILABLE:
-        return query_deepseek_ai_fallback(query_text, kp_data)
+    # Get unique planets for the select dropdown
+    planets = []
+    if not df.empty:
+        planets = sorted(df['Planet'].unique().tolist())
     
+    return render_template('index.html', 
+                         data=df.to_dict('records') if not df.empty else [], 
+                         planets=planets)
+
+@app.route('/filter_data', methods=['POST'])
+def filter_data():
+    """Filter data based on selected planet"""
     try:
-        driver = setup_webdriver()
-        if not driver:
-            # If webdriver setup fails, use fallback immediately
-            return query_deepseek_ai_fallback(query_text, kp_data)
+        selected_planet = request.json.get('planet', '')
+        df = load_astro_data()
         
-        # Navigate to DeepSeek
-        st.info("🌐 Connecting to chat.deepseek.com...")
-        driver.get("https://chat.deepseek.com/")
-        
-        # Wait for page to load
-        wait = WebDriverWait(driver, 20)
-        
-        # Look for the input text area (adjust selector based on actual website)
-        st.info("🔍 Looking for input field...")
-        
-        # Try multiple possible selectors for the input field
-        input_selectors = [
-            "textarea[placeholder*='How can I help you today?']",
-            "textarea[placeholder*='Ask me anything']",
-            "textarea",
-            "input[type='text']",
-            ".chat-input textarea",
-            "#chat-input",
-            "[data-testid='chat-input']"
-        ]
-        
-        input_element = None
-        for selector in input_selectors:
-            try:
-                input_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-                break
-            except:
-                continue
-        
-        if not input_element:
-            driver.quit()
-            return query_deepseek_ai_fallback(query_text, kp_data)
-        
-        # Clear and enter the query
-        st.info("✍️ Entering query...")
-        input_element.clear()
-        input_element.send_keys(query_text)
-        
-        # Look for and click the send button
-        send_selectors = [
-            "button[type='submit']",
-            "button:contains('Send')",
-            ".send-button",
-            "[data-testid='send-button']",
-            "button[aria-label*='Send']"
-        ]
-        
-        send_button = None
-        for selector in send_selectors:
-            try:
-                send_button = driver.find_element(By.CSS_SELECTOR, selector)
-                break
-            except:
-                continue
-        
-        if send_button:
-            st.info("📤 Sending query...")
-            send_button.click()
+        if selected_planet and selected_planet != 'all':
+            filtered_df = df[df['Planet'] == selected_planet]
         else:
-            # Try pressing Enter
-            input_element.send_keys(Keys.RETURN)
-        
-        # Wait for response
-        st.info("⏳ Waiting for DeepSeek AI response...")
-        time.sleep(5)  # Give time for response to generate
-        
-        # Look for response elements
-        response_selectors = [
-            ".message-content",
-            ".response-text",
-            ".chat-message",
-            ".ai-response",
-            "[data-testid='ai-message']",
-            ".markdown-content"
-        ]
-        
-        response_text = ""
-        for selector in response_selectors:
-            try:
-                response_elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                if response_elements:
-                    # Get the last response (most recent)
-                    response_text = response_elements[-1].text
-                    break
-            except:
-                continue
-        
-        if not response_text:
-            # Try getting all text from main content area
-            try:
-                main_content = driver.find_element(By.TAG_NAME, "main")
-                response_text = main_content.text
-            except:
-                response_text = "Could not extract response from DeepSeek. Please try again."
-        
-        driver.quit()
-        
-        if response_text and len(response_text.strip()) > 0:
-            formatted_response = f"""
-🤖 **Real DeepSeek AI Response:**
-
-**Query:** "{query_text}"
-
-**Response:**
-{response_text}
-
----
-✅ *This is an actual response from chat.deepseek.com*
-"""
-            return True, formatted_response
-        else:
-            return query_deepseek_ai_fallback(query_text, kp_data)
+            filtered_df = df
             
+        return jsonify({
+            'success': True,
+            'data': filtered_df.to_dict('records')
+        })
     except Exception as e:
-        if 'driver' in locals():
-            try:
-                driver.quit()
-            except:
-                pass
-        # Always fallback to simulation mode on any error
-        return query_deepseek_ai_fallback(query_text, kp_data)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
-def query_deepseek_ai_fallback(query_text, kp_data=None):
-    """
-    Advanced AI simulation with realistic astrological analysis
-    """
+@app.route('/search_deepseek', methods=['POST'])
+def search_deepseek_route():
+    """Search using DeepSeek AI"""
     try:
-        # Analyze query to determine symbol and context
-        query_lower = query_text.lower()
+        query = request.json.get('query', '')
         
-        if "gold" in query_lower:
-            symbol = "GOLD"
-            strength_factor = 1.2
-        elif "silver" in query_lower:
-            symbol = "SILVER"  
-            strength_factor = 1.1
-        elif "nifty" in query_lower:
-            symbol = "NIFTY"
-            strength_factor = 1.0
-        elif "banknifty" in query_lower:
-            symbol = "BANKNIFTY"
-            strength_factor = 1.3
-        elif "crude" in query_lower:
-            symbol = "CRUDE OIL"
-            strength_factor = 1.4
-        elif "btc" in query_lower or "bitcoin" in query_lower:
-            symbol = "BITCOIN"
-            strength_factor = 1.5
-        else:
-            symbol = "GENERAL MARKET"
-            strength_factor = 1.0
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query cannot be empty'
+            })
         
-        # Enhanced realistic response with current data
-        current_time = datetime.now().strftime('%d %b %Y, %H:%M IST')
+        # Get current astro data for context
+        df = load_astro_data()
+        context = f"Astrological Data Context:\n{df.to_string()}\n\nUser Query: {query}"
         
-        response = f"""
-🤖 **Advanced AI Astrological Analysis Engine**
-
-**Query:** "{query_text}"
-
-**{symbol} Cosmic Intelligence Report - {current_time}**
-
-| Date | Time | Planet | Motion | Sign Lord | Star Lord | Sub Lord | Aspect Type | Influence | Notes |
-|------|------|---------|---------|-----------|-----------|----------|-------------|-----------|-------|
-| 2025-07-31 | 02:49:05 | Ve | D | Me | Ma | Mo | Venus-Moon-Mercury | Neutral | Venus debilitated in Gemini, Moon sub - emotional volatility |
-| 2025-07-31 | 03:16:01 | Mo | D | Me | Ma | Ju | Moon-Jupiter | Bullish | Jupiter aspect may bring optimism (but retrograde Jupiter weakens) |
-| 2025-07-31 | 06:50:00 | Mo | D | Me | Ma | Sa | Moon-Saturn | Bearish | Saturn's restrictive influence on Moon |
-| 2025-07-31 | 11:04:33 | Mo | D | Ve | Ma | Me | Moon-Mercury | Volatile | Mercury-Moon combo can cause quick swings |
-| 2025-07-31 | 13:26:12 | Ju | D | Me | Ra | Su | Jupiter-Sun | Bearish | Sun combusting Jupiter (debilitated in Gemini) |
-| 2025-07-31 | 14:52:41 | Mo | D | Ve | Ma | Ke | Moon-Ketu | Bearish | Ketu brings uncertainty/sudden drops |
-| 2025-07-31 | 16:26:43 | Mo | D | Ve | Ma | Ve | Moon-Venus | Bullish | Venus-Moon is generally positive for sentiment |
-| 2025-07-31 | 20:55:37 | Mo | D | Ve | Ma | Su | Moon-Sun | Bearish | Sun's fiery nature may overrule Moon's calm |
-| 2025-07-31 | 22:16:21 | Mo | D | Ve | Ma | Mo | Moon-Moon | Neutral | Self-aspect - depends on other transits |
-
-**📊 Influence Summary:**
-- **Bullish Aspects**: 2 (Venus-Moon combinations)
-- **Bearish Aspects**: 4 (Saturn, Ketu, Sun combustion influences)  
-- **Volatile Aspects**: 1 (Mercury-Moon quick swings)
-- **Neutral Aspects**: 2 (Venus debilitation, Moon self-aspect)
-
-**🔍 Key Cosmic Observations:**
-
-• **Early Day (02:49-06:50)**: Mixed signals with Venus debilitation but Jupiter aspect offering temporary support.
-
-• **Midday (11:04-14:52)**: Highly volatile period with Mercury (communication) and Ketu (unpredictability) influences.
-
-• **Late Afternoon (16:26+)**: Venus-Moon combination could bring short-term bullishness, but Sun-Moon opposition later may reverse gains.
-
-• **Jupiter Retrograde Effect**: Jupiter in Gemini (debilitated) with Rahu star lord suggests larger market skepticism despite temporary rallies.
-
-**🎯 {symbol} Specific Trading Intelligence:**
-
-**⏰ Optimal Entry Times:**
-• **03:16 AM IST**: Moon-Jupiter aspect (Bullish window)
-• **16:26 PM IST**: Venus-Moon conjunction (Positive sentiment)
-
-**⚠️ High-Risk Periods:**
-• **06:50 AM IST**: Saturn restriction on Moon
-• **14:52 PM IST**: Ketu uncertainty phase  
-• **20:55 PM IST**: Sun overpowering Moon calm
-
-**💡 Strategic Recommendations:**
-• **Risk Level**: Moderate to High (Strength Factor: {strength_factor}x)
-• **Position Sizing**: Reduce during Saturn/Ketu hours
-• **Stop-Loss Strategy**: Tight stops during volatile Mercury phases
-• **Profit Booking**: Consider partial profits during Venus-Moon peaks
-
-**🌟 Planetary Ruler Analysis for {symbol}:**
-• **Primary Influence**: Jupiter (Growth potential but currently debilitated)
-• **Secondary Support**: Venus (Sentiment driver, currently weak in Gemini)
-• **Caution Trigger**: Saturn (Major restrictive force today)
-
-**⚖️ Overall Market Bias:** Slightly Bearish with Volatile Swings
-- **Confidence Level**: 78% (based on planetary weight analysis)
-- **Volatility Index**: High (4/7 aspects show instability)
-- **Trend Sustainability**: Low (conflicting planetary forces)
-
-**🔮 Extended Forecast Hints:**
-- Watch for planetary transitions in next 24-48 hours
-- Venus movement out of debilitation could shift sentiment
-- Jupiter retrograde effects may persist for 2-3 weeks
-
-**⚠️ Disclaimer:** This is advanced astrological interpretation based on Krishnamurti Paddhati system combined with planetary transit analysis. Actual market behavior depends on multiple factors including fundamentals, technicals, global events, and economic indicators. Always combine with comprehensive analysis and risk management before making trading decisions.
-
----
-✨ **Powered by Advanced Astrological Intelligence Engine**
-*Optimized for cloud deployment with real-time cosmic calculations*
-"""
-        return True, response
+        # Search DeepSeek
+        result = search_deepseek(context)
+        
+        return jsonify({
+            'success': True,
+            'result': result
+        })
         
     except Exception as e:
-        return False, f"Error generating advanced analysis: {str(e)}"
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
-def main():
-    st.set_page_config(page_title="Enhanced Astro Symbol Tracker", layout="wide")
-    
-    # Initialize session state
-    if 'query_input' not in st.session_state:
-        st.session_state.query_input = ''
-    
-    # Header
-    st.title("🌠 Enhanced Astro Symbol Tracker with AI Integration")
-    
-    # Status indicator
-    col1, col2, col3 = st.columns([3, 1, 1])
-    with col1:
-        if SELENIUM_AVAILABLE:
-            st.success("🔗 Real DeepSeek Integration: ACTIVE")
-        else:
-            st.info("🤖 AI Simulation Mode: ACTIVE (Optimized for Cloud Deployment)")
-    
-    st.markdown("---")
-    
-    # Sidebar for file upload and configuration
-    with st.sidebar:
-        st.header("📁 Configuration")
-        uploaded_file = st.file_uploader("Upload kp_astro.txt", type="txt")
-        if uploaded_file:
-            try:
-                with open("kp_astro.txt", "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                st.success("✅ KP Astro data loaded!")
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
-                return
-        
-        st.header("🤖 DeepSeek Integration")
-        
-        if SELENIUM_AVAILABLE:
-            st.success("✅ Selenium Available - Real DeepSeek Integration Enabled!")
-            st.info("App can fetch real responses from chat.deepseek.com")
-        else:
-            st.success("✅ AI Simulation Mode - Optimized Performance!")
-            st.info("Advanced astrological analysis with DeepSeek-style responses")
-        
-        with st.expander("📥 Setup Instructions for Real Integration"):
-            st.markdown("""
-**For Local Development Only:**
-
-**Step 1: Install Selenium**
-```bash
-pip install selenium
-```
-
-**Step 2: Install ChromeDriver (Local Only)**
-- Go to https://chromedriver.chromium.org/
-- Download version matching your Chrome browser
-- Add to system PATH
-
-**⚠️ Important: Streamlit Cloud Limitations**
-- Streamlit Cloud doesn't support browser automation
-- Real DeepSeek integration only works on local development
-- Cloud deployment uses simulation mode automatically
-
-**For Local Development:**
-```bash
-# Windows
-# Download chromedriver.exe and add to PATH
-
-# Mac/Linux
-sudo mv chromedriver /usr/local/bin/
-chmod +x /usr/local/bin/chromedriver
-```
-
-**Simulation Mode Features:**
-- ✅ Realistic DeepSeek-style responses
-- ✅ Detailed astrological analysis tables
-- ✅ All cosmic influence calculations
-- ✅ Trading recommendations
-- ✅ Perfect for production use
-            """)
-        
-        # Cloud deployment notice
-        if st.checkbox("ℹ️ About Cloud Deployment"):
-            st.info("""
-**Why Simulation Mode on Cloud?**
-- Browser automation requires system-level access
-- Streamlit Cloud has security restrictions
-- Selenium/ChromeDriver not supported in cloud environment
-- Simulation mode provides 95% of the functionality
-
-**Simulation Mode Advantages:**
-- ⚡ Faster response times
-- 🔒 More reliable (no browser dependencies)
-- 💰 Lower resource usage
-- 📊 Same analysis quality
-            """)
-        
-        st.info("💡 Current mode: " + ("Real Integration" if SELENIUM_AVAILABLE else "Simulation Mode (Recommended for Cloud)"))
-    
-    # Create sample data if file doesn't exist
-    if not os.path.exists("kp_astro.txt"):
-        # Create sample data based on the provided data
-        sample_data = """Planet	Date	Time	Motion	Sign Lord	Star Lord	Sub Lord	Zodiac	Nakshatra	Pada	Pos in Zodiac	Declination
-Ve	2025-07-31	02:49:05	D	Me	Ma	Mo	Gemini	Mrigashira	4	05°33'20"	21.86
-Mo	2025-07-31	03:16:01	D	Me	Ma	Ju	Virgo	Chitra	1	26°06'40"	-10.40
-Mo	2025-07-31	06:50:00	D	Me	Ma	Sa	Virgo	Chitra	2	27°53'20"	-11.19
-Mo	2025-07-31	11:04:33	D	Ve	Ma	Me	Libra	Chitra	3	00°00'00"	-12.13
-Ju	2025-07-31	13:26:12	D	Me	Ra	Su	Gemini	Ardra	4	17°26'40"	22.85
-Mo	2025-07-31	14:52:41	D	Ve	Ma	Ke	Libra	Chitra	3	01°53'20"	-12.95
-Mo	2025-07-31	16:26:43	D	Ve	Ma	Ve	Libra	Chitra	3	02°40'00"	-13.29
-Mo	2025-07-31	20:55:37	D	Ve	Ma	Su	Libra	Chitra	4	04°53'20"	-14.24
-Mo	2025-07-31	22:16:21	D	Ve	Ma	Mo	Libra	Chitra	4	05°33'20"	-14.52"""
-        
-        with open("kp_astro.txt", "w") as f:
-            f.write(sample_data)
-        st.info("📝 Using sample KP Astro data")
-    
-    # Load data
-    kp_data = parse_kp_astro("kp_astro.txt")
-    if kp_data.empty:
-        st.error("❌ No valid data found in file")
-        return
-    
-    # Main content area with tabs
-    tab1, tab2, tab3 = st.tabs(["📊 KP Astro Data", "🎯 Symbol Analysis", "🤖 AI Query"])
-    
-    with tab1:
-        st.header("📊 KP Astro Data Table")
-        
-        # Display the data in table format
-        display_df = kp_data.drop('DateTime', axis=1)  # Remove DateTime for cleaner display
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            height=400
-        )
-        
-        # Quick stats
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Records", len(kp_data))
-        with col2:
-            st.metric("Unique Planets", kp_data['Planet'].nunique())
-        with col3:
-            st.metric("Unique Sub Lords", kp_data['Sub_Lord'].nunique())
-        with col4:
-            st.metric("Date Range", kp_data['Date'].iloc[0] if not kp_data.empty else "N/A")
-    
-    with tab2:
-        st.header("🎯 Symbol Analysis")
-        
-        # Symbol selection
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            input_method = st.radio(
-                "Select Symbol Input Method",
-                options=["Choose from predefined", "Enter custom symbol"],
-                horizontal=True
-            )
-            
-            if input_method == "Choose from predefined":
-                symbol = st.selectbox(
-                    "Select Symbol",
-                    options=['GOLD', 'SILVER', 'NIFTY', 'BANKNIFTY', 'CRUDE', 'BTC', 'PHARMA', 'FMCG', 'AUTO', 'OIL AND GAS'],
-                    index=0
-                )
-            else:
-                symbol = st.text_input(
-                    "Enter Custom Symbol",
-                    value="GOLD",
-                    help="Enter any symbol name (will use default astro configuration)"
-                ).upper()
-        
-        with col2:
-            st.markdown("<br>", unsafe_allow_html=True)  # Add some space
-            search_button = st.button("🔍 Generate Report", type="primary", use_container_width=True)
-        
-        if search_button:
-            with st.spinner(f"🔄 Analyzing {symbol} aspects..."):
-                report = generate_symbol_report(symbol, kp_data)
-                
-                if not report:
-                    st.error("❌ No relevant aspects found for selected date")
-                else:
-                    st.subheader(f"📈 {symbol} Astro Report")
-                    st.code(report, language=None)
-                    
-                    # Add DeepSeek-style analysis for the symbol
-                    st.subheader(f"🤖 DeepSeek Analysis for {symbol}")
-                    deepseek_query = f"analyze {symbol} bullish bearish astro aspects timeline with cosmic influences"
-                    
-                    ds_success, ds_response = query_deepseek_ai(deepseek_query, kp_data)
-                    
-                    if ds_success:
-                        st.markdown(ds_response)
-                    else:
-                        st.info("💡 Advanced AI analysis not available - check sidebar for enhancement options")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        if st.button("📤 Send Basic Report to Telegram"):
-                            success, msg = send_to_telegram(report)
-                            if success:
-                                st.success(msg)
-                                st.balloons()
-                            else:
-                                st.error(msg)
-                    
-                    with col2:
-                        if st.button("📤 Send DeepSeek Analysis to Telegram"):
-                            if ds_success:
-                                success, msg = send_to_telegram(ds_response)
-                                if success:
-                                    st.success("DeepSeek analysis sent!")
-                                else:
-                                    st.error(msg)
-                            else:
-                                st.error("No DeepSeek analysis to send")
-                    
-                    with col3:
-                        if st.button("📤 Send Combined Report to Telegram"):
-                            combined_report = f"{report}\n\n{'='*50}\n\n{ds_response if ds_success else 'DeepSeek analysis unavailable'}"
-                            success, msg = send_to_telegram(combined_report)
-                            if success:
-                                st.success("Combined report sent!")
-                            else:
-                                st.error(msg)
-    
-    with tab3:
-        st.header("🤖 DeepSeek AI Query")
-        st.markdown("Ask DeepSeek AI about market analysis, astrological insights, or trading strategies")
-        
-        # Quick query buttons
-        st.subheader("📋 Quick Query Examples")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("🥇 Gold Analysis"):
-                st.session_state.query_input = "show Gold bullish bearish astro aspect timeline table format report also add cosmic"
-        
-        with col2:
-            if st.button("📊 Market Overview"):
-                st.session_state.query_input = "analyze current planetary aspects for stock market with bullish bearish timeline"
-        
-        with col3:
-            if st.button("🌟 Cosmic Influence"):
-                st.session_state.query_input = "explain today's planetary influences on financial markets with timing details"
-        
-        # DeepSeek-style interface
-        query_input = st.text_area(
-            "Enter your query:",
-            value=st.session_state.get('query_input', ''),
-            placeholder="Ask about market predictions, astrological analysis, or trading strategies...",
-            height=100
-        )
-        
-        col1, col2, col3 = st.columns([1, 1, 3])
-        with col1:
-            deepseek_button = st.button("🚀 Query DeepSeek", type="primary")
-        with col2:
-            if st.button("🗑️ Clear Query"):
-                st.session_state.query_input = ''
-                st.rerun()
-        
-        if deepseek_button and query_input.strip():
-            with st.spinner("🤖 Processing query..."):
-                success, response = query_deepseek_ai(query_input, kp_data)
-                
-                if success:
-                    st.subheader("🤖 DeepSeek AI Response")
-                    st.markdown(response)
-                    
-                    # Option to send AI response to Telegram
-                    if st.button("📤 Send AI Response to Telegram"):
-                        telegram_success, telegram_msg = send_to_telegram(response)
-                        if telegram_success:
-                            st.success(telegram_msg)
-                        else:
-                            st.error(telegram_msg)
-                else:
-                    st.error(response)
-                    if not SELENIUM_AVAILABLE:
-                        st.info("💡 This is advanced simulation mode - check sidebar for real integration options")
-        elif deepseek_button and not query_input.strip():
-            st.warning("⚠️ Please enter a query before searching")
-    
-    # Footer
-    st.markdown("---")
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        mode = "Advanced AI Intelligence" if SELENIUM_AVAILABLE else "Optimized Cloud Intelligence"
-        st.markdown(
-            f"""
-            <div style='text-align: center; color: gray; font-size: 12px;'>
-            Enhanced Astro Symbol Tracker v2.0 | {mode} | Professional Astrological Analysis Engine
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
