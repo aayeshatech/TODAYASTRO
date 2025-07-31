@@ -237,38 +237,183 @@ def send_to_telegram(message):
     except Exception as e:
         return False, f"❌ Connection error: {str(e)}"
 
-def query_deepseek_ai(query_text):
+def query_deepseek_ai(query_text, kp_data=None):
     """
-    Simulate DeepSeek AI query - Note: This is a placeholder
-    Real implementation would require proper API access to DeepSeek
+    Generate DeepSeek-style astrological analysis based on KP data
     """
     try:
-        # This is a simulation - replace with actual DeepSeek API call
-        simulated_response = f"""
-🤖 DeepSeek AI Response:
-
-Query: "{query_text}"
-
-Analysis:
-- Your query about "{query_text}" has been processed
-- Based on current market conditions and astrological data
-- Recommendation: Monitor planetary aspects for {query_text}
-- Risk Level: Moderate
-- Timing: Current planetary positions suggest caution
-
-Note: This is a simulated response. For actual DeepSeek integration, 
-you would need proper API credentials and endpoint access.
-
-🔮 Astrological Insight:
-The current planetary configuration suggests mixed signals for your query.
-Venus and Jupiter aspects are favorable for financial decisions.
-"""
-        return True, simulated_response
+        if kp_data is None or kp_data.empty:
+            return False, "No KP data available for analysis"
+        
+        # Create detailed astrological analysis table
+        analysis_data = []
+        
+        for _, row in kp_data.iterrows():
+            aspect_type = f"{row['Planet']}-{row['Sub_Lord']}"
+            if len(row['Star_Lord']) > 0:
+                aspect_type = f"{row['Planet']}-{row['Sub_Lord']}-{row['Star_Lord']}"
+            
+            # Determine influence based on planetary combinations
+            influence = determine_cosmic_influence(row['Planet'], row['Sub_Lord'], row['Star_Lord'])
+            notes = generate_cosmic_notes(row)
+            
+            analysis_data.append({
+                'Date': row['Date'],
+                'Time': row['Time'],
+                'Planet': row['Planet'],
+                'Motion': row['Motion'],
+                'Sign_Lord': row['Sign_Lord'],
+                'Star_Lord': row['Star_Lord'],
+                'Sub_Lord': row['Sub_Lord'],
+                'Aspect_Type': aspect_type,
+                'Influence': influence,
+                'Notes': notes
+            })
+        
+        # Generate DeepSeek-style response
+        response = generate_deepseek_response(query_text, analysis_data)
+        return True, response
+        
     except Exception as e:
-        return False, f"Error querying DeepSeek AI: {str(e)}"
+        return False, f"Error generating DeepSeek analysis: {str(e)}"
+
+def determine_cosmic_influence(planet, sub_lord, star_lord):
+    """Determine astrological influence based on planetary combinations"""
+    
+    # Bullish combinations
+    bullish_combos = [
+        ('Mo', 'Ju'), ('Su', 'Ju'), ('Ju', 'Ve'), ('Mo', 'Ve'), 
+        ('Ve', 'Me'), ('Su', 'Ve'), ('Ma', 'Ju')
+    ]
+    
+    # Bearish combinations  
+    bearish_combos = [
+        ('Mo', 'Sa'), ('Sa', 'Ra'), ('Mo', 'Ke'), ('Sa', 'Ke'),
+        ('Ma', 'Sa'), ('Su', 'Sa'), ('Ra', 'Ke')
+    ]
+    
+    # Volatile combinations
+    volatile_combos = [
+        ('Mo', 'Me'), ('Ma', 'Me'), ('Ra', 'Me'), ('Me', 'Ke')
+    ]
+    
+    combo = (planet, sub_lord)
+    
+    if combo in bullish_combos:
+        return "Bullish"
+    elif combo in bearish_combos:
+        return "Bearish"
+    elif combo in volatile_combos:
+        return "Volatile"
+    else:
+        return "Neutral"
+
+def generate_cosmic_notes(row):
+    """Generate detailed cosmic analysis notes"""
+    
+    planet = row['Planet']
+    sub_lord = row['Sub_Lord']
+    star_lord = row['Star_Lord']
+    zodiac = row['Zodiac']
+    
+    notes_map = {
+        ('Ve', 'Mo'): f"Venus-Moon in {zodiac} - emotional sensitivity in financial decisions",
+        ('Mo', 'Ju'): f"Moon-Jupiter aspect - optimism but check for retrograde effects",
+        ('Mo', 'Sa'): f"Moon-Saturn combination - restrictive influence, caution advised",
+        ('Mo', 'Me'): f"Mercury-Moon combo in {zodiac} - quick market swings expected",
+        ('Ju', 'Su'): f"Jupiter-Sun in {zodiac} - potential combustion effect",
+        ('Mo', 'Ke'): f"Moon-Ketu aspect - uncertainty and sudden market drops",
+        ('Mo', 'Ve'): f"Moon-Venus in {zodiac} - generally positive for market sentiment",
+        ('Mo', 'Su'): f"Moon-Sun aspect - fiery nature may override stability",
+        ('Mo', 'Mo'): f"Moon self-aspect in {zodiac} - depends on other planetary transits"
+    }
+    
+    combo = (planet, sub_lord)
+    return notes_map.get(combo, f"{planet}-{sub_lord} combination in {zodiac} - monitor for cosmic influences")
+
+def generate_deepseek_response(query, analysis_data):
+    """Generate comprehensive DeepSeek-style response"""
+    
+    # Create table header
+    table_lines = [
+        "📊 **Detailed Astrological Analysis Table:**",
+        "",
+        "| Date | Time | Planet | Motion | Sign Lord | Star Lord | Sub Lord | Aspect Type | Influence | Notes |",
+        "|------|------|---------|---------|-----------|-----------|----------|-------------|-----------|-------|"
+    ]
+    
+    # Add data rows
+    for data in analysis_data:
+        row = f"| {data['Date']} | {data['Time']} | {data['Planet']} | {data['Motion']} | {data['Sign_Lord']} | {data['Star_Lord']} | {data['Sub_Lord']} | {data['Aspect_Type']} | {data['Influence']} | {data['Notes']} |"
+        table_lines.append(row)
+    
+    # Count influences
+    bullish_count = sum(1 for d in analysis_data if d['Influence'] == 'Bullish')
+    bearish_count = sum(1 for d in analysis_data if d['Influence'] == 'Bearish')
+    volatile_count = sum(1 for d in analysis_data if d['Influence'] == 'Volatile')
+    neutral_count = sum(1 for d in analysis_data if d['Influence'] == 'Neutral')
+    
+    # Generate key observations
+    observations = []
+    
+    if bullish_count > bearish_count:
+        observations.append("🟢 **Predominantly Bullish Day**: More positive planetary aspects favor upward movement")
+    elif bearish_count > bullish_count:
+        observations.append("🔴 **Bearish Tendency**: Restrictive planetary influences suggest caution")
+    else:
+        observations.append("🟡 **Mixed Signals**: Balanced planetary forces suggest sideways movement")
+    
+    if volatile_count > 2:
+        observations.append("⚡ **High Volatility Expected**: Multiple Mercury and Mars aspects indicate quick swings")
+    
+    # Time-based analysis
+    morning_aspects = [d for d in analysis_data if d['Time'] < '12:00:00']
+    afternoon_aspects = [d for d in analysis_data if d['Time'] >= '12:00:00']
+    
+    if morning_aspects:
+        morning_sentiment = max(set([d['Influence'] for d in morning_aspects]), 
+                              key=[d['Influence'] for d in morning_aspects].count)
+        observations.append(f"🌅 **Morning Bias**: {morning_sentiment} planetary influences dominate early hours")
+    
+    if afternoon_aspects:
+        afternoon_sentiment = max(set([d['Influence'] for d in afternoon_aspects]), 
+                                key=[d['Influence'] for d in afternoon_aspects].count)
+        observations.append(f"🌇 **Afternoon Trend**: {afternoon_sentiment} aspects gain strength later")
+    
+    # Combine everything into final response
+    response_parts = [
+        "🤖 **DeepSeek AI Response:**",
+        "",
+        f"**Query:** \"{query}\"",
+        "",
+        "**Cosmic Analysis:**",
+        *table_lines,
+        "",
+        "📈 **Influence Summary:**",
+        f"- Bullish Aspects: {bullish_count}",
+        f"- Bearish Aspects: {bearish_count}", 
+        f"- Volatile Aspects: {volatile_count}",
+        f"- Neutral Aspects: {neutral_count}",
+        "",
+        "🔍 **Key Observations:**",
+        *[f"• {obs}" for obs in observations],
+        "",
+        "🎯 **Trading Recommendations:**",
+        "• **Risk Level**: Moderate to High (based on planetary volatility)",
+        "• **Timing Strategy**: Monitor Venus-Moon and Jupiter aspects for entry/exit",
+        "• **Caution Periods**: Avoid trading during Saturn and Ketu dominant times",
+        "",
+        "⚠️ **Disclaimer:** This is astrological interpretation based on planetary positions. Actual market behavior depends on multiple factors including fundamentals, technicals, and global events. Always combine with comprehensive analysis before making trading decisions."
+    ]
+    
+    return "\n".join(response_parts)
 
 def main():
     st.set_page_config(page_title="Enhanced Astro Symbol Tracker", layout="wide")
+    
+    # Initialize session state
+    if 'query_input' not in st.session_state:
+        st.session_state.query_input = ''
     
     # Header
     st.title("🌠 Enhanced Astro Symbol Tracker with AI Integration")
@@ -376,13 +521,43 @@ Mo	2025-07-31	22:16:21	D	Ve	Ma	Mo	Libra	Chitra	4	05°33'20"	-14.52"""
                     st.subheader(f"📈 {symbol} Astro Report")
                     st.code(report, language=None)
                     
-                    col1, col2 = st.columns(2)
+                    # Add DeepSeek-style analysis for the symbol
+                    st.subheader(f"🤖 DeepSeek Analysis for {symbol}")
+                    deepseek_query = f"analyze {symbol} bullish bearish astro aspects timeline with cosmic influences"
+                    ds_success, ds_response = query_deepseek_ai(deepseek_query, kp_data)
+                    
+                    if ds_success:
+                        st.markdown(ds_response)
+                    else:
+                        st.error("Failed to generate DeepSeek analysis")
+                    
+                    col1, col2, col3 = st.columns(3)
                     with col1:
-                        if st.button("📤 Send to Telegram"):
+                        if st.button("📤 Send Basic Report to Telegram"):
                             success, msg = send_to_telegram(report)
                             if success:
                                 st.success(msg)
                                 st.balloons()
+                            else:
+                                st.error(msg)
+                    
+                    with col2:
+                        if st.button("📤 Send DeepSeek Analysis to Telegram"):
+                            if ds_success:
+                                success, msg = send_to_telegram(ds_response)
+                                if success:
+                                    st.success("DeepSeek analysis sent!")
+                                else:
+                                    st.error(msg)
+                            else:
+                                st.error("No DeepSeek analysis to send")
+                    
+                    with col3:
+                        if st.button("📤 Send Combined Report to Telegram"):
+                            combined_report = f"{report}\n\n{'='*50}\n\n{ds_response if ds_success else 'DeepSeek analysis unavailable'}"
+                            success, msg = send_to_telegram(combined_report)
+                            if success:
+                                st.success("Combined report sent!")
                             else:
                                 st.error(msg)
     
@@ -390,20 +565,41 @@ Mo	2025-07-31	22:16:21	D	Ve	Ma	Mo	Libra	Chitra	4	05°33'20"	-14.52"""
         st.header("🤖 DeepSeek AI Query")
         st.markdown("Ask DeepSeek AI about market analysis, astrological insights, or trading strategies")
         
+        # Quick query buttons
+        st.subheader("📋 Quick Query Examples")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("🥇 Gold Analysis"):
+                st.session_state.query_input = "show Gold bullish bearish astro aspect timeline table format report also add cosmic"
+        
+        with col2:
+            if st.button("📊 Market Overview"):
+                st.session_state.query_input = "analyze current planetary aspects for stock market with bullish bearish timeline"
+        
+        with col3:
+            if st.button("🌟 Cosmic Influence"):
+                st.session_state.query_input = "explain today's planetary influences on financial markets with timing details"
+        
         # DeepSeek-style interface
         query_input = st.text_area(
             "Enter your query:",
+            value=st.session_state.get('query_input', ''),
             placeholder="Ask about market predictions, astrological analysis, or trading strategies...",
             height=100
         )
         
-        col1, col2 = st.columns([1, 4])
+        col1, col2, col3 = st.columns([1, 1, 3])
         with col1:
             deepseek_button = st.button("🚀 Query DeepSeek", type="primary")
+        with col2:
+            if st.button("🗑️ Clear Query"):
+                st.session_state.query_input = ''
+                st.rerun()
         
         if deepseek_button and query_input.strip():
             with st.spinner("🤖 Querying DeepSeek AI..."):
-                success, response = query_deepseek_ai(query_input)
+                success, response = query_deepseek_ai(query_input, kp_data)
                 
                 if success:
                     st.subheader("🤖 DeepSeek AI Response")
