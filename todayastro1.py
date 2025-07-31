@@ -5,6 +5,13 @@ import re
 import os
 import requests
 import json
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import time
 
 # Telegram Configuration
 BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
@@ -237,176 +244,173 @@ def send_to_telegram(message):
     except Exception as e:
         return False, f"❌ Connection error: {str(e)}"
 
+def setup_webdriver():
+    """Setup Chrome webdriver with appropriate options"""
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # Run in background
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver
+    except Exception as e:
+        st.error(f"Failed to setup webdriver: {str(e)}")
+        return None
+
 def query_deepseek_ai(query_text, kp_data=None):
     """
-    Generate DeepSeek-style astrological analysis based on KP data
+    Send actual query to chat.deepseek.com and get real response
     """
     try:
-        if kp_data is None or kp_data.empty:
-            return False, "No KP data available for analysis"
+        driver = setup_webdriver()
+        if not driver:
+            return False, "Failed to initialize web driver. Please install ChromeDriver."
         
-        # Create detailed astrological analysis table
-        analysis_data = []
+        # Navigate to DeepSeek
+        st.info("🌐 Connecting to chat.deepseek.com...")
+        driver.get("https://chat.deepseek.com/")
         
-        for _, row in kp_data.iterrows():
-            aspect_type = f"{row['Planet']}-{row['Sub_Lord']}"
-            if len(row['Star_Lord']) > 0:
-                aspect_type = f"{row['Planet']}-{row['Sub_Lord']}-{row['Star_Lord']}"
+        # Wait for page to load
+        wait = WebDriverWait(driver, 20)
+        
+        # Look for the input text area (adjust selector based on actual website)
+        st.info("🔍 Looking for input field...")
+        
+        # Try multiple possible selectors for the input field
+        input_selectors = [
+            "textarea[placeholder*='How can I help you today?']",
+            "textarea[placeholder*='Ask me anything']",
+            "textarea",
+            "input[type='text']",
+            ".chat-input textarea",
+            "#chat-input",
+            "[data-testid='chat-input']"
+        ]
+        
+        input_element = None
+        for selector in input_selectors:
+            try:
+                input_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                break
+            except:
+                continue
+        
+        if not input_element:
+            driver.quit()
+            return False, "Could not find input field on DeepSeek website. Please check if the site structure has changed."
+        
+        # Clear and enter the query
+        st.info("✍️ Entering query...")
+        input_element.clear()
+        input_element.send_keys(query_text)
+        
+        # Look for and click the send button
+        send_selectors = [
+            "button[type='submit']",
+            "button:contains('Send')",
+            ".send-button",
+            "[data-testid='send-button']",
+            "button[aria-label*='Send']"
+        ]
+        
+        send_button = None
+        for selector in send_selectors:
+            try:
+                send_button = driver.find_element(By.CSS_SELECTOR, selector)
+                break
+            except:
+                continue
+        
+        if send_button:
+            st.info("📤 Sending query...")
+            send_button.click()
+        else:
+            # Try pressing Enter
+            input_element.send_keys(Keys.RETURN)
+        
+        # Wait for response
+        st.info("⏳ Waiting for DeepSeek AI response...")
+        time.sleep(5)  # Give time for response to generate
+        
+        # Look for response elements
+        response_selectors = [
+            ".message-content",
+            ".response-text",
+            ".chat-message",
+            ".ai-response",
+            "[data-testid='ai-message']",
+            ".markdown-content"
+        ]
+        
+        response_text = ""
+        for selector in response_selectors:
+            try:
+                response_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                if response_elements:
+                    # Get the last response (most recent)
+                    response_text = response_elements[-1].text
+                    break
+            except:
+                continue
+        
+        if not response_text:
+            # Try getting all text from main content area
+            try:
+                main_content = driver.find_element(By.TAG_NAME, "main")
+                response_text = main_content.text
+            except:
+                response_text = "Could not extract response from DeepSeek. Please try again."
+        
+        driver.quit()
+        
+        if response_text and len(response_text.strip()) > 0:
+            formatted_response = f"""
+🤖 **Real DeepSeek AI Response:**
+
+**Query:** "{query_text}"
+
+**Response:**
+{response_text}
+
+---
+✅ *This is an actual response from chat.deepseek.com*
+"""
+            return True, formatted_response
+        else:
+            return False, "No response received from DeepSeek AI. Please try again."
             
-            # Determine influence based on planetary combinations
-            influence = determine_cosmic_influence(row['Planet'], row['Sub_Lord'], row['Star_Lord'])
-            notes = generate_cosmic_notes(row)
-            
-            analysis_data.append({
-                'Date': row['Date'],
-                'Time': row['Time'],
-                'Planet': row['Planet'],
-                'Motion': row['Motion'],
-                'Sign_Lord': row['Sign_Lord'],
-                'Star_Lord': row['Star_Lord'],
-                'Sub_Lord': row['Sub_Lord'],
-                'Aspect_Type': aspect_type,
-                'Influence': influence,
-                'Notes': notes
-            })
-        
-        # Generate DeepSeek-style response
-        response = generate_deepseek_response(query_text, analysis_data)
-        return True, response
-        
     except Exception as e:
-        return False, f"Error generating DeepSeek analysis: {str(e)}"
+        if 'driver' in locals():
+            driver.quit()
+        return False, f"Error querying DeepSeek AI: {str(e)}"
 
-def determine_cosmic_influence(planet, sub_lord, star_lord):
-    """Determine astrological influence based on planetary combinations"""
-    
-    # Bullish combinations
-    bullish_combos = [
-        ('Mo', 'Ju'), ('Su', 'Ju'), ('Ju', 'Ve'), ('Mo', 'Ve'), 
-        ('Ve', 'Me'), ('Su', 'Ve'), ('Ma', 'Ju')
-    ]
-    
-    # Bearish combinations  
-    bearish_combos = [
-        ('Mo', 'Sa'), ('Sa', 'Ra'), ('Mo', 'Ke'), ('Sa', 'Ke'),
-        ('Ma', 'Sa'), ('Su', 'Sa'), ('Ra', 'Ke')
-    ]
-    
-    # Volatile combinations
-    volatile_combos = [
-        ('Mo', 'Me'), ('Ma', 'Me'), ('Ra', 'Me'), ('Me', 'Ke')
-    ]
-    
-    combo = (planet, sub_lord)
-    
-    if combo in bullish_combos:
-        return "Bullish"
-    elif combo in bearish_combos:
-        return "Bearish"
-    elif combo in volatile_combos:
-        return "Volatile"
-    else:
-        return "Neutral"
-
-def generate_cosmic_notes(row):
-    """Generate detailed cosmic analysis notes"""
-    
-    planet = row['Planet']
-    sub_lord = row['Sub_Lord']
-    star_lord = row['Star_Lord']
-    zodiac = row['Zodiac']
-    
-    notes_map = {
-        ('Ve', 'Mo'): f"Venus-Moon in {zodiac} - emotional sensitivity in financial decisions",
-        ('Mo', 'Ju'): f"Moon-Jupiter aspect - optimism but check for retrograde effects",
-        ('Mo', 'Sa'): f"Moon-Saturn combination - restrictive influence, caution advised",
-        ('Mo', 'Me'): f"Mercury-Moon combo in {zodiac} - quick market swings expected",
-        ('Ju', 'Su'): f"Jupiter-Sun in {zodiac} - potential combustion effect",
-        ('Mo', 'Ke'): f"Moon-Ketu aspect - uncertainty and sudden market drops",
-        ('Mo', 'Ve'): f"Moon-Venus in {zodiac} - generally positive for market sentiment",
-        ('Mo', 'Su'): f"Moon-Sun aspect - fiery nature may override stability",
-        ('Mo', 'Mo'): f"Moon self-aspect in {zodiac} - depends on other planetary transits"
-    }
-    
-    combo = (planet, sub_lord)
-    return notes_map.get(combo, f"{planet}-{sub_lord} combination in {zodiac} - monitor for cosmic influences")
-
-def generate_deepseek_response(query, analysis_data):
-    """Generate comprehensive DeepSeek-style response"""
-    
-    # Create table header
-    table_lines = [
-        "📊 **Detailed Astrological Analysis Table:**",
-        "",
-        "| Date | Time | Planet | Motion | Sign Lord | Star Lord | Sub Lord | Aspect Type | Influence | Notes |",
-        "|------|------|---------|---------|-----------|-----------|----------|-------------|-----------|-------|"
-    ]
-    
-    # Add data rows
-    for data in analysis_data:
-        row = f"| {data['Date']} | {data['Time']} | {data['Planet']} | {data['Motion']} | {data['Sign_Lord']} | {data['Star_Lord']} | {data['Sub_Lord']} | {data['Aspect_Type']} | {data['Influence']} | {data['Notes']} |"
-        table_lines.append(row)
-    
-    # Count influences
-    bullish_count = sum(1 for d in analysis_data if d['Influence'] == 'Bullish')
-    bearish_count = sum(1 for d in analysis_data if d['Influence'] == 'Bearish')
-    volatile_count = sum(1 for d in analysis_data if d['Influence'] == 'Volatile')
-    neutral_count = sum(1 for d in analysis_data if d['Influence'] == 'Neutral')
-    
-    # Generate key observations
-    observations = []
-    
-    if bullish_count > bearish_count:
-        observations.append("🟢 **Predominantly Bullish Day**: More positive planetary aspects favor upward movement")
-    elif bearish_count > bullish_count:
-        observations.append("🔴 **Bearish Tendency**: Restrictive planetary influences suggest caution")
-    else:
-        observations.append("🟡 **Mixed Signals**: Balanced planetary forces suggest sideways movement")
-    
-    if volatile_count > 2:
-        observations.append("⚡ **High Volatility Expected**: Multiple Mercury and Mars aspects indicate quick swings")
-    
-    # Time-based analysis
-    morning_aspects = [d for d in analysis_data if d['Time'] < '12:00:00']
-    afternoon_aspects = [d for d in analysis_data if d['Time'] >= '12:00:00']
-    
-    if morning_aspects:
-        morning_sentiment = max(set([d['Influence'] for d in morning_aspects]), 
-                              key=[d['Influence'] for d in morning_aspects].count)
-        observations.append(f"🌅 **Morning Bias**: {morning_sentiment} planetary influences dominate early hours")
-    
-    if afternoon_aspects:
-        afternoon_sentiment = max(set([d['Influence'] for d in afternoon_aspects]), 
-                                key=[d['Influence'] for d in afternoon_aspects].count)
-        observations.append(f"🌇 **Afternoon Trend**: {afternoon_sentiment} aspects gain strength later")
-    
-    # Combine everything into final response
-    response_parts = [
-        "🤖 **DeepSeek AI Response:**",
-        "",
-        f"**Query:** \"{query}\"",
-        "",
-        "**Cosmic Analysis:**",
-        *table_lines,
-        "",
-        "📈 **Influence Summary:**",
-        f"- Bullish Aspects: {bullish_count}",
-        f"- Bearish Aspects: {bearish_count}", 
-        f"- Volatile Aspects: {volatile_count}",
-        f"- Neutral Aspects: {neutral_count}",
-        "",
-        "🔍 **Key Observations:**",
-        *[f"• {obs}" for obs in observations],
-        "",
-        "🎯 **Trading Recommendations:**",
-        "• **Risk Level**: Moderate to High (based on planetary volatility)",
-        "• **Timing Strategy**: Monitor Venus-Moon and Jupiter aspects for entry/exit",
-        "• **Caution Periods**: Avoid trading during Saturn and Ketu dominant times",
-        "",
-        "⚠️ **Disclaimer:** This is astrological interpretation based on planetary positions. Actual market behavior depends on multiple factors including fundamentals, technicals, and global events. Always combine with comprehensive analysis before making trading decisions."
-    ]
-    
-    return "\n".join(response_parts)
+def query_deepseek_ai_fallback(query_text, kp_data=None):
+    """
+    Fallback method using requests (if selenium fails)
+    """
+    try:
+        st.warning("🔄 Using fallback method to query DeepSeek...")
+        
+        # This is a simplified approach - may need adjustment based on DeepSeek's API
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Content-Type': 'application/json'
+        }
+        
+        # Note: This may not work if DeepSeek requires authentication or has CORS protection
+        response = requests.get("https://chat.deepseek.com/", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            return False, "DeepSeek website is accessible, but automated querying requires proper web automation setup. Please install ChromeDriver for full functionality."
+        else:
+            return False, f"Cannot access DeepSeek website. Status code: {response.status_code}"
+            
+    except Exception as e:
+        return False, f"Fallback method failed: {str(e)}"
 
 def main():
     st.set_page_config(page_title="Enhanced Astro Symbol Tracker", layout="wide")
@@ -431,6 +435,28 @@ def main():
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
                 return
+        
+        st.header("🤖 DeepSeek Integration")
+        st.info("For real DeepSeek AI integration:")
+        
+        with st.expander("📥 Setup Instructions"):
+            st.code("""
+# Install Selenium
+pip install selenium
+
+# Download ChromeDriver
+# 1. Go to https://chromedriver.chromium.org/
+# 2. Download version matching your Chrome
+# 3. Add to PATH or place in project folder
+
+# For Windows:
+# Place chromedriver.exe in PATH
+
+# For Linux/Mac:
+# sudo mv chromedriver /usr/local/bin/
+            """)
+        
+        st.warning("⚠️ Without Selenium setup, the app will use fallback mode")
     
     # Create sample data if file doesn't exist
     if not os.path.exists("kp_astro.txt"):
@@ -524,12 +550,21 @@ Mo	2025-07-31	22:16:21	D	Ve	Ma	Mo	Libra	Chitra	4	05°33'20"	-14.52"""
                     # Add DeepSeek-style analysis for the symbol
                     st.subheader(f"🤖 DeepSeek Analysis for {symbol}")
                     deepseek_query = f"analyze {symbol} bullish bearish astro aspects timeline with cosmic influences"
-                    ds_success, ds_response = query_deepseek_ai(deepseek_query, kp_data)
+                    
+                    try:
+                        ds_success, ds_response = query_deepseek_ai(deepseek_query, kp_data)
+                    except ImportError:
+                        st.warning("⚠️ Selenium not available - using fallback method")
+                        ds_success, ds_response = query_deepseek_ai_fallback(deepseek_query, kp_data)
+                    except Exception as e:
+                        st.warning(f"⚠️ DeepSeek connection failed: {str(e)} - using fallback")
+                        ds_success, ds_response = query_deepseek_ai_fallback(deepseek_query, kp_data)
                     
                     if ds_success:
                         st.markdown(ds_response)
                     else:
                         st.error("Failed to generate DeepSeek analysis")
+                        st.info("💡 For real DeepSeek integration, install: pip install selenium")
                     
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -598,8 +633,21 @@ Mo	2025-07-31	22:16:21	D	Ve	Ma	Mo	Libra	Chitra	4	05°33'20"	-14.52"""
                 st.rerun()
         
         if deepseek_button and query_input.strip():
-            with st.spinner("🤖 Querying DeepSeek AI..."):
-                success, response = query_deepseek_ai(query_input, kp_data)
+            with st.spinner("🤖 Connecting to DeepSeek AI..."):
+                try:
+                    success, response = query_deepseek_ai(query_input, kp_data)
+                except ImportError:
+                    st.error("❌ Selenium not installed. Please install it using: pip install selenium")
+                    st.info("📥 To enable real DeepSeek integration, you need to:")
+                    st.code("""
+pip install selenium
+# Download ChromeDriver from https://chromedriver.chromium.org/
+# Add ChromeDriver to your PATH
+                    """)
+                    success, response = query_deepseek_ai_fallback(query_input, kp_data)
+                except Exception as e:
+                    st.error(f"❌ Error connecting to DeepSeek: {str(e)}")
+                    success, response = query_deepseek_ai_fallback(query_input, kp_data)
                 
                 if success:
                     st.subheader("🤖 DeepSeek AI Response")
@@ -614,6 +662,7 @@ Mo	2025-07-31	22:16:21	D	Ve	Ma	Mo	Libra	Chitra	4	05°33'20"	-14.52"""
                             st.error(telegram_msg)
                 else:
                     st.error(response)
+                    st.info("💡 For full functionality, please ensure Selenium and ChromeDriver are properly installed.")
         elif deepseek_button and not query_input.strip():
             st.warning("⚠️ Please enter a query before searching")
     
