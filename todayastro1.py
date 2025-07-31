@@ -1,113 +1,141 @@
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import requests
-import json
-import time
+from datetime import datetime
+import os
 
 app = Flask(__name__)
 
+# Configuration
+DEEPSEEK_API_URL = "https://chat.deepseek.com/v1/chat/completions"  # Example endpoint
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', 'your_api_key_here')
+DATA_FILE = 'kp_astro.txt'
+
 def load_astro_data():
-    """Load astro data from the text file"""
+    """Load and preprocess astro data"""
     try:
-        df = pd.read_csv('kp_astro.txt', sep='\t')
-        return df
+        df = pd.read_csv(DATA_FILE, sep='\t')
+        
+        # Convert to consistent datetime format
+        df['DateTime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'])
+        df['Date'] = df['DateTime'].dt.strftime('%Y-%m-%d')
+        df['Time'] = df['DateTime'].dt.strftime('%H:%M:%S')
+        
+        return df.sort_values('DateTime')
     except Exception as e:
         print(f"Error loading data: {e}")
         return pd.DataFrame()
 
-def search_deepseek(query):
+def query_deepseek(prompt, astro_context=""):
+    """Query DeepSeek API with error handling"""
+    headers = {
+        'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    
+    messages = [
+        {
+            "role": "system",
+            "content": f"""You are an expert astrological AI analyst. Analyze this KP astro data:
+            {astro_context}
+            Provide detailed interpretations focusing on planetary influences, timing, and practical implications.
+            """
+        },
+        {"role": "user", "content": prompt}
+    ]
+    
     try:
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer YOUR_DEEPSEEK_API_KEY'
-        }
-        
-        payload = {
-            'query': query,
-            'context': 'astrological_data'
-        }
-        
         response = requests.post(
-            'https://chat.deepseek.com/api/chat', 
-            headers=headers, 
-            json=payload, 
-            timeout=30
+            DEEPSEEK_API_URL,
+            headers=headers,
+            json={
+                "model": "deepseek-chat",
+                "messages": messages,
+                "temperature": 0.7
+            },
+            timeout=15
         )
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return {"error": f"API Error: {response.status_code}"}
-            
-    except Exception as e:
-        return {"error": f"Error connecting to DeepSeek: {str(e)}"}
-
+        response.raise_for_status()
+        return response.json()['choices'][0]['message']['content']
+    except requests.exceptions.RequestException as e:
+        return f"API Error: {str(e)}"
+    except (KeyError, IndexError) as e:
+        return "Error parsing API response"
 
 @app.route('/')
 def index():
-    """Main page route"""
+    """Main dashboard page"""
     df = load_astro_data()
+    latest_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    # Get unique planets for the select dropdown
-    planets = []
-    if not df.empty:
-        planets = sorted(df['Planet'].unique().tolist())
+    # Prepare summary stats
+    stats = {
+        'planets': df['Planet'].nunique(),
+        'entries': len(df),
+        'date_range': f"{df['Date'].min()} to {df['Date'].max()}",
+        'active_mode': "Hybrid AI System" if DEEPSEEK_API_KEY else "Local Analysis"
+    }
     
-    return render_template('index.html', 
-                         data=df.to_dict('records') if not df.empty else [], 
-                         planets=planets)
+    return render_template(
+        'index.html',
+        data=df.to_dict('records'),
+        planets=sorted(df['Planet'].unique()),
+        stats=stats,
+        last_updated=latest_update
+    )
 
-@app.route('/filter_data', methods=['POST'])
+@app.route('/api/filter', methods=['POST'])
 def filter_data():
-    """Filter data based on selected planet"""
+    """API endpoint for filtering data"""
     try:
-        selected_planet = request.json.get('planet', '')
+        filters = request.get_json()
         df = load_astro_data()
         
-        if selected_planet and selected_planet != 'all':
-            filtered_df = df[df['Planet'] == selected_planet]
-        else:
-            filtered_df = df
+        # Apply filters
+        if filters.get('planet') and filters['planet'] != 'all':
+            df = df[df['Planet'] == filters['planet']]
+            
+        if filters.get('date'):
+            df = df[df['Date'] == filters['date']]
+            
+        if filters.get('motion'):
+            df = df[df['Motion'] == filters['motion']]
             
         return jsonify({
             'success': True,
-            'data': filtered_df.to_dict('records')
+            'data': df.to_dict('records'),
+            'count': len(df)
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
+        return jsonify({'success': False, 'error': str(e)}), 400
 
-@app.route('/search_deepseek', methods=['POST'])
-def search_deepseek_route():
-    """Search using DeepSeek AI"""
+@app.route('/api/analyze', methods=['POST'])
+def analyze():
+    """API endpoint for DeepSeek analysis"""
     try:
-        query = request.json.get('query', '')
+        data = request.get_json()
+        query = data.get('query', '').strip()
         
         if not query:
-            return jsonify({
-                'success': False,
-                'error': 'Query cannot be empty'
-            })
-        
-        # Get current astro data for context
+            raise ValueError("Query cannot be empty")
+            
+        # Get current astro context
         df = load_astro_data()
-        context = f"Astrological Data Context:\n{df.to_string()}\n\nUser Query: {query}"
+        context = df.to_string()
         
-        # Search DeepSeek
-        result = search_deepseek(context)
+        # Get AI analysis
+        start_time = time.time()
+        analysis = query_deepseek(query, context)
+        response_time = round(time.time() - start_time, 2)
         
         return jsonify({
             'success': True,
-            'result': result
+            'analysis': analysis,
+            'response_time': f"{response_time}s",
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         })
-        
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
