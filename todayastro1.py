@@ -4,6 +4,7 @@ from datetime import datetime
 import re
 import os
 import requests
+import json
 
 # Telegram Configuration
 BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
@@ -110,10 +111,20 @@ def parse_kp_astro(file_path):
                     
                     data.append({
                         'Planet': parts[0],
-                        'DateTime': date_time,
-                        'Sub_Lord': parts[6]
+                        'Date': parts[1],
+                        'Time': parts[2],
+                        'Motion': parts[3],
+                        'Sign_Lord': parts[4],
+                        'Star_Lord': parts[5],
+                        'Sub_Lord': parts[6],
+                        'Zodiac': parts[7],
+                        'Nakshatra': parts[8],
+                        'Pada': parts[9],
+                        'Position': parts[10],
+                        'Declination': parts[11] if len(parts) > 11 else '',
+                        'DateTime': date_time
                     })
-                except ValueError:
+                except (ValueError, IndexError):
                     continue
         
         return pd.DataFrame(data)
@@ -226,69 +237,200 @@ def send_to_telegram(message):
     except Exception as e:
         return False, f"❌ Connection error: {str(e)}"
 
+def query_deepseek_ai(query_text):
+    """
+    Simulate DeepSeek AI query - Note: This is a placeholder
+    Real implementation would require proper API access to DeepSeek
+    """
+    try:
+        # This is a simulation - replace with actual DeepSeek API call
+        simulated_response = f"""
+🤖 DeepSeek AI Response:
+
+Query: "{query_text}"
+
+Analysis:
+- Your query about "{query_text}" has been processed
+- Based on current market conditions and astrological data
+- Recommendation: Monitor planetary aspects for {query_text}
+- Risk Level: Moderate
+- Timing: Current planetary positions suggest caution
+
+Note: This is a simulated response. For actual DeepSeek integration, 
+you would need proper API credentials and endpoint access.
+
+🔮 Astrological Insight:
+The current planetary configuration suggests mixed signals for your query.
+Venus and Jupiter aspects are favorable for financial decisions.
+"""
+        return True, simulated_response
+    except Exception as e:
+        return False, f"Error querying DeepSeek AI: {str(e)}"
+
 def main():
-    st.set_page_config(page_title="Astro Symbol Tracker", layout="centered")
-    st.title("🌠 Symbol-Specific Astro Report")
+    st.set_page_config(page_title="Enhanced Astro Symbol Tracker", layout="wide")
     
-    # File upload
-    uploaded_file = st.file_uploader("Upload kp_astro.txt", type="txt")
-    if uploaded_file:
-        try:
-            with open("kp_astro.txt", "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.success("KP Astro data loaded!")
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
-            return
+    # Header
+    st.title("🌠 Enhanced Astro Symbol Tracker with AI Integration")
+    st.markdown("---")
     
+    # Sidebar for file upload and configuration
+    with st.sidebar:
+        st.header("📁 Configuration")
+        uploaded_file = st.file_uploader("Upload kp_astro.txt", type="txt")
+        if uploaded_file:
+            try:
+                with open("kp_astro.txt", "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                st.success("✅ KP Astro data loaded!")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+                return
+    
+    # Create sample data if file doesn't exist
     if not os.path.exists("kp_astro.txt"):
-        st.warning("Please upload kp_astro.txt file")
-        return
+        # Create sample data based on the provided data
+        sample_data = """Planet	Date	Time	Motion	Sign Lord	Star Lord	Sub Lord	Zodiac	Nakshatra	Pada	Pos in Zodiac	Declination
+Ve	2025-07-31	02:49:05	D	Me	Ma	Mo	Gemini	Mrigashira	4	05°33'20"	21.86
+Mo	2025-07-31	03:16:01	D	Me	Ma	Ju	Virgo	Chitra	1	26°06'40"	-10.40
+Mo	2025-07-31	06:50:00	D	Me	Ma	Sa	Virgo	Chitra	2	27°53'20"	-11.19
+Mo	2025-07-31	11:04:33	D	Ve	Ma	Me	Libra	Chitra	3	00°00'00"	-12.13
+Ju	2025-07-31	13:26:12	D	Me	Ra	Su	Gemini	Ardra	4	17°26'40"	22.85
+Mo	2025-07-31	14:52:41	D	Ve	Ma	Ke	Libra	Chitra	3	01°53'20"	-12.95
+Mo	2025-07-31	16:26:43	D	Ve	Ma	Ve	Libra	Chitra	3	02°40'00"	-13.29
+Mo	2025-07-31	20:55:37	D	Ve	Ma	Su	Libra	Chitra	4	04°53'20"	-14.24
+Mo	2025-07-31	22:16:21	D	Ve	Ma	Mo	Libra	Chitra	4	05°33'20"	-14.52"""
+        
+        with open("kp_astro.txt", "w") as f:
+            f.write(sample_data)
+        st.info("📝 Using sample KP Astro data")
     
     # Load data
     kp_data = parse_kp_astro("kp_astro.txt")
     if kp_data.empty:
-        st.error("No valid data found in file")
+        st.error("❌ No valid data found in file")
         return
     
-    # Symbol input
-    input_method = st.radio(
-        "Select Symbol Input Method",
-        options=["Choose from predefined", "Enter custom symbol"],
-        horizontal=True
-    )
+    # Main content area with tabs
+    tab1, tab2, tab3 = st.tabs(["📊 KP Astro Data", "🎯 Symbol Analysis", "🤖 AI Query"])
     
-    if input_method == "Choose from predefined":
-        symbol = st.selectbox(
-            "Select Symbol",
-            options=['GOLD', 'SILVER', 'NIFTY', 'BANKNIFTY', 'CRUDE', 'BTC', 'PHARMA', 'FMCG', 'AUTO', 'OIL AND GAS'],
-            index=0
+    with tab1:
+        st.header("📊 KP Astro Data Table")
+        
+        # Display the data in table format
+        display_df = kp_data.drop('DateTime', axis=1)  # Remove DateTime for cleaner display
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            height=400
         )
-    else:
-        symbol = st.text_input(
-            "Enter Custom Symbol",
-            value="GOLD",
-            help="Enter any symbol name (will use default astro configuration)"
-        ).upper()
+        
+        # Quick stats
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Records", len(kp_data))
+        with col2:
+            st.metric("Unique Planets", kp_data['Planet'].nunique())
+        with col3:
+            st.metric("Unique Sub Lords", kp_data['Sub_Lord'].nunique())
+        with col4:
+            st.metric("Date Range", kp_data['Date'].iloc[0] if not kp_data.empty else "N/A")
     
-    if st.button("Generate Symbol Report"):
-        with st.spinner(f"Analyzing {symbol} aspects..."):
-            report = generate_symbol_report(symbol, kp_data)
+    with tab2:
+        st.header("🎯 Symbol Analysis")
+        
+        # Symbol selection
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            input_method = st.radio(
+                "Select Symbol Input Method",
+                options=["Choose from predefined", "Enter custom symbol"],
+                horizontal=True
+            )
             
-            if not report:
-                st.error("No relevant aspects found for selected date")
-                return
-            
-            st.subheader(f"{symbol} Astro Report")
-            st.code(report)
-            
-            if st.button("📤 Send to Telegram"):
-                success, msg = send_to_telegram(report)
-                if success:
-                    st.success(msg)
-                    st.balloons()
+            if input_method == "Choose from predefined":
+                symbol = st.selectbox(
+                    "Select Symbol",
+                    options=['GOLD', 'SILVER', 'NIFTY', 'BANKNIFTY', 'CRUDE', 'BTC', 'PHARMA', 'FMCG', 'AUTO', 'OIL AND GAS'],
+                    index=0
+                )
+            else:
+                symbol = st.text_input(
+                    "Enter Custom Symbol",
+                    value="GOLD",
+                    help="Enter any symbol name (will use default astro configuration)"
+                ).upper()
+        
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)  # Add some space
+            search_button = st.button("🔍 Generate Report", type="primary", use_container_width=True)
+        
+        if search_button:
+            with st.spinner(f"🔄 Analyzing {symbol} aspects..."):
+                report = generate_symbol_report(symbol, kp_data)
+                
+                if not report:
+                    st.error("❌ No relevant aspects found for selected date")
                 else:
-                    st.error(msg)
+                    st.subheader(f"📈 {symbol} Astro Report")
+                    st.code(report, language=None)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("📤 Send to Telegram"):
+                            success, msg = send_to_telegram(report)
+                            if success:
+                                st.success(msg)
+                                st.balloons()
+                            else:
+                                st.error(msg)
+    
+    with tab3:
+        st.header("🤖 DeepSeek AI Query")
+        st.markdown("Ask DeepSeek AI about market analysis, astrological insights, or trading strategies")
+        
+        # DeepSeek-style interface
+        query_input = st.text_area(
+            "Enter your query:",
+            placeholder="Ask about market predictions, astrological analysis, or trading strategies...",
+            height=100
+        )
+        
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            deepseek_button = st.button("🚀 Query DeepSeek", type="primary")
+        
+        if deepseek_button and query_input.strip():
+            with st.spinner("🤖 Querying DeepSeek AI..."):
+                success, response = query_deepseek_ai(query_input)
+                
+                if success:
+                    st.subheader("🤖 DeepSeek AI Response")
+                    st.markdown(response)
+                    
+                    # Option to send AI response to Telegram
+                    if st.button("📤 Send AI Response to Telegram"):
+                        telegram_success, telegram_msg = send_to_telegram(response)
+                        if telegram_success:
+                            st.success(telegram_msg)
+                        else:
+                            st.error(telegram_msg)
+                else:
+                    st.error(response)
+        elif deepseek_button and not query_input.strip():
+            st.warning("⚠️ Please enter a query before searching")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown(
+        """
+        <div style='text-align: center; color: gray; font-size: 12px;'>
+        Enhanced Astro Symbol Tracker v2.0 | Integrated with AI Analysis
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()
