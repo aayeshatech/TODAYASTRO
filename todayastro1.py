@@ -1,18 +1,18 @@
-from flask import Flask, render_template, request, jsonify
+import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
 import os
-
-app = Flask(__name__)
+from datetime import datetime
+import time
 
 # Configuration
-DEEPSEEK_API_URL = "https://chat.deepseek.com/v1/chat/completions"  # Example endpoint
-DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', 'your_api_key_here')
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"  # Example endpoint
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', st.secrets.get("DEEPSEEK_API_KEY", "your_api_key_here"))
 DATA_FILE = 'kp_astro.txt'
 
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_astro_data():
-    """Load and preprocess astro data"""
+    """Load and preprocess astro data with error handling"""
     try:
         df = pd.read_csv(DATA_FILE, sep='\t')
         
@@ -23,11 +23,14 @@ def load_astro_data():
         
         return df.sort_values('DateTime')
     except Exception as e:
-        print(f"Error loading data: {e}")
+        st.error(f"Error loading astro data: {str(e)}")
         return pd.DataFrame()
 
 def query_deepseek(prompt, astro_context=""):
-    """Query DeepSeek API with error handling"""
+    """Query DeepSeek API with enhanced error handling"""
+    if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "your_api_key_here":
+        return "Error: DeepSeek API key not configured"
+    
     headers = {
         'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
         'Content-Type': 'application/json'
@@ -39,103 +42,88 @@ def query_deepseek(prompt, astro_context=""):
             "content": f"""You are an expert astrological AI analyst. Analyze this KP astro data:
             {astro_context}
             Provide detailed interpretations focusing on planetary influences, timing, and practical implications.
+            Use markdown formatting for clear presentation.
             """
         },
         {"role": "user", "content": prompt}
     ]
     
     try:
-        response = requests.post(
-            DEEPSEEK_API_URL,
-            headers=headers,
-            json={
-                "model": "deepseek-chat",
-                "messages": messages,
-                "temperature": 0.7
-            },
-            timeout=15
-        )
-        response.raise_for_status()
-        return response.json()['choices'][0]['message']['content']
+        with st.spinner("Consulting DeepSeek AI..."):
+            response = requests.post(
+                DEEPSEEK_API_URL,
+                headers=headers,
+                json={
+                    "model": "deepseek-chat",
+                    "messages": messages,
+                    "temperature": 0.7
+                },
+                timeout=15
+            )
+            
+        if response.status_code == 200:
+            return response.json().get('choices', [{}])[0].get('message', {}).get('content', 'No response content')
+        else:
+            return f"API Error (Status {response.status_code}): {response.text}"
+            
     except requests.exceptions.RequestException as e:
-        return f"API Error: {str(e)}"
-    except (KeyError, IndexError) as e:
-        return "Error parsing API response"
+        return f"Connection Error: {str(e)}"
 
-@app.route('/')
-def index():
-    """Main dashboard page"""
-    df = load_astro_data()
-    latest_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    # Prepare summary stats
-    stats = {
-        'planets': df['Planet'].nunique(),
-        'entries': len(df),
-        'date_range': f"{df['Date'].min()} to {df['Date'].max()}",
-        'active_mode': "Hybrid AI System" if DEEPSEEK_API_KEY else "Local Analysis"
-    }
-    
-    return render_template(
-        'index.html',
-        data=df.to_dict('records'),
-        planets=sorted(df['Planet'].unique()),
-        stats=stats,
-        last_updated=latest_update
+def main():
+    st.set_page_config(
+        page_title="KP Astro Analysis Engine",
+        page_icon="🔮",
+        layout="wide"
     )
-
-@app.route('/api/filter', methods=['POST'])
-def filter_data():
-    """API endpoint for filtering data"""
-    try:
-        filters = request.get_json()
-        df = load_astro_data()
+    
+    # Load data
+    df = load_astro_data()
+    
+    # Sidebar filters
+    with st.sidebar:
+        st.header("🔍 Filters")
+        selected_planet = st.selectbox(
+            "Select Planet",
+            ["All"] + sorted(df['Planet'].unique().tolist())
+        )
         
-        # Apply filters
-        if filters.get('planet') and filters['planet'] != 'all':
-            df = df[df['Planet'] == filters['planet']]
-            
-        if filters.get('date'):
-            df = df[df['Date'] == filters['date']]
-            
-        if filters.get('motion'):
-            df = df[df['Motion'] == filters['motion']]
-            
-        return jsonify({
-            'success': True,
-            'data': df.to_dict('records'),
-            'count': len(df)
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-
-@app.route('/api/analyze', methods=['POST'])
-def analyze():
-    """API endpoint for DeepSeek analysis"""
-    try:
-        data = request.get_json()
-        query = data.get('query', '').strip()
-        
-        if not query:
-            raise ValueError("Query cannot be empty")
-            
-        # Get current astro context
-        df = load_astro_data()
-        context = df.to_string()
-        
-        # Get AI analysis
-        start_time = time.time()
+        selected_date = st.selectbox(
+            "Select Date",
+            ["All"] + sorted(df['Date'].unique().tolist())
+        )
+    
+    # Apply filters
+    filtered_df = df.copy()
+    if selected_planet != "All":
+        filtered_df = filtered_df[filtered_df['Planet'] == selected_planet]
+    if selected_date != "All":
+        filtered_df = filtered_df[filtered_df['Date'] == selected_date]
+    
+    # Main display
+    st.title("🔮 KP Astrological Analysis Engine")
+    st.caption(f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Data table
+    st.dataframe(
+        filtered_df[['Planet', 'Date', 'Time', 'Motion', 'Sign Lord', 'Star Lord', 'Sub Lord']],
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    # AI Analysis section
+    st.divider()
+    st.subheader("🤖 DeepSeek AI Analysis")
+    
+    query = st.text_area(
+        "Ask about planetary influences:",
+        placeholder="E.g., What does Moon in Chitra mean for trading today?"
+    )
+    
+    if st.button("Get Analysis", type="primary") and query:
+        context = filtered_df.to_markdown()
         analysis = query_deepseek(query, context)
-        response_time = round(time.time() - start_time, 2)
-        
-        return jsonify({
-            'success': True,
-            'analysis': analysis,
-            'response_time': f"{response_time}s",
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        st.markdown("### AI Analysis Result")
+        st.markdown(analysis)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    main()
