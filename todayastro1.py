@@ -5,13 +5,19 @@ import re
 import os
 import requests
 import json
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-import time
+
+# Optional Selenium imports - only import if available
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.chrome.options import Options
+    import time
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
 
 # Telegram Configuration
 BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
@@ -246,6 +252,9 @@ def send_to_telegram(message):
 
 def setup_webdriver():
     """Setup Chrome webdriver with appropriate options"""
+    if not SELENIUM_AVAILABLE:
+        return None
+        
     try:
         chrome_options = Options()
         chrome_options.add_argument("--headless")  # Run in background
@@ -263,8 +272,12 @@ def setup_webdriver():
 
 def query_deepseek_ai(query_text, kp_data=None):
     """
-    Send actual query to chat.deepseek.com and get real response
+    Send actual query to chat.deepseek.com and get real response (if Selenium available)
+    Otherwise provide simulated response with instructions
     """
+    if not SELENIUM_AVAILABLE:
+        return query_deepseek_ai_fallback(query_text, kp_data)
+    
     try:
         driver = setup_webdriver()
         if not driver:
@@ -390,27 +403,65 @@ def query_deepseek_ai(query_text, kp_data=None):
 
 def query_deepseek_ai_fallback(query_text, kp_data=None):
     """
-    Fallback method using requests (if selenium fails)
+    Provide enhanced simulated response when Selenium is not available
     """
     try:
-        st.warning("🔄 Using fallback method to query DeepSeek...")
-        
-        # This is a simplified approach - may need adjustment based on DeepSeek's API
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Content-Type': 'application/json'
-        }
-        
-        # Note: This may not work if DeepSeek requires authentication or has CORS protection
-        response = requests.get("https://chat.deepseek.com/", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            return False, "DeepSeek website is accessible, but automated querying requires proper web automation setup. Please install ChromeDriver for full functionality."
+        # Generate a detailed response based on the query
+        if "gold" in query_text.lower():
+            symbol = "GOLD"
+        elif "silver" in query_text.lower():
+            symbol = "SILVER"
+        elif "nifty" in query_text.lower():
+            symbol = "NIFTY"
+        elif "banknifty" in query_text.lower():
+            symbol = "BANKNIFTY"
         else:
-            return False, f"Cannot access DeepSeek website. Status code: {response.status_code}"
-            
+            symbol = "GENERAL MARKET"
+        
+        # Create a realistic DeepSeek-style response
+        response = f"""
+🤖 **DeepSeek AI Simulation (Install Selenium for Real Integration)**
+
+**Query:** "{query_text}"
+
+**{symbol} Astrological Analysis:**
+
+| Date | Time | Planet | Motion | Sign Lord | Star Lord | Sub Lord | Aspect Type | Influence | Notes |
+|------|------|---------|---------|-----------|-----------|----------|-------------|-----------|-------|
+| 2025-07-31 | 02:49:05 | Ve | D | Me | Ma | Mo | Venus-Moon-Mercury | Neutral | Venus debilitated in Gemini, Moon sub - emotional volatility |
+| 2025-07-31 | 03:16:01 | Mo | D | Me | Ma | Ju | Moon-Jupiter | Bullish | Jupiter aspect may bring optimism (but retrograde Jupiter weakens) |
+| 2025-07-31 | 06:50:00 | Mo | D | Me | Ma | Sa | Moon-Saturn | Bearish | Saturn's restrictive influence on Moon |
+| 2025-07-31 | 11:04:33 | Mo | D | Ve | Ma | Me | Moon-Mercury | Volatile | Mercury-Moon combo can cause quick swings |
+| 2025-07-31 | 13:26:12 | Ju | D | Me | Ra | Su | Jupiter-Sun | Bearish | Sun combusting Jupiter (debilitated in Gemini) |
+| 2025-07-31 | 14:52:41 | Mo | D | Ve | Ma | Ke | Moon-Ketu | Bearish | Ketu brings uncertainty/sudden drops |
+| 2025-07-31 | 16:26:43 | Mo | D | Ve | Ma | Ve | Moon-Venus | Bullish | Venus-Moon is generally positive for sentiment |
+| 2025-07-31 | 20:55:37 | Mo | D | Ve | Ma | Su | Moon-Sun | Bearish | Sun's fiery nature may overrule Moon's calm |
+| 2025-07-31 | 22:16:21 | Mo | D | Ve | Ma | Mo | Moon-Moon | Neutral | Self-aspect - depends on other transits |
+
+**Key Observations:**
+• Early Day (02:49-06:50): Mixed signals with Venus debilitation but Jupiter aspect offering temporary support.
+• Midday (11:04-14:52): Highly volatile period with Mercury (communication) and Ketu (unpredictability) influences.
+• Late Afternoon (16:26+): Venus-Moon combination could bring short-term bullishness, but Sun-Moon opposition later may reverse gains.
+• Jupiter Retrograde in Gemini (debilitated) with Rahu star lord suggests larger market skepticism despite temporary rallies.
+
+**Trading Recommendations for {symbol}:**
+• **Risk Level**: Moderate to High
+• **Best Entry Times**: 03:16 AM, 16:26 PM (Venus-Moon aspects)
+• **Caution Periods**: 06:50 AM, 14:52 PM, 20:55 PM (Saturn/Ketu influence)
+• **Overall Bias**: Mixed with slight bearish tendency due to planetary debilitation
+
+**Disclaimer**: This is a general astrological interpretation; actual market behavior depends on multiple factors. Always combine with fundamental/technical analysis.
+
+---
+⚠️ **Note**: This is a simulated response. For real DeepSeek AI integration:
+1. Install Selenium: `pip install selenium`
+2. Download ChromeDriver from https://chromedriver.chromium.org/
+3. Restart the application
+"""
+        return True, response
+        
     except Exception as e:
-        return False, f"Fallback method failed: {str(e)}"
+        return False, f"Error generating analysis: {str(e)}"
 
 def main():
     st.set_page_config(page_title="Enhanced Astro Symbol Tracker", layout="wide")
@@ -437,26 +488,51 @@ def main():
                 return
         
         st.header("🤖 DeepSeek Integration")
-        st.info("For real DeepSeek AI integration:")
         
-        with st.expander("📥 Setup Instructions"):
-            st.code("""
-# Install Selenium
+        if SELENIUM_AVAILABLE:
+            st.success("✅ Selenium Available - Real DeepSeek Integration Enabled!")
+            st.info("App can fetch real responses from chat.deepseek.com")
+        else:
+            st.warning("⚠️ Selenium Not Available - Using Simulation Mode")
+            st.info("Install Selenium for real DeepSeek integration")
+        
+        with st.expander("📥 Setup Instructions for Real Integration"):
+            st.markdown("""
+**Step 1: Install Selenium**
+```bash
 pip install selenium
+```
 
-# Download ChromeDriver
-# 1. Go to https://chromedriver.chromium.org/
-# 2. Download version matching your Chrome
-# 3. Add to PATH or place in project folder
+**Step 2: Install ChromeDriver**
+- Go to https://chromedriver.chromium.org/
+- Download version matching your Chrome browser
+- For Streamlit Cloud: Add to requirements.txt
 
-# For Windows:
-# Place chromedriver.exe in PATH
+**Step 3: For Local Development**
+```bash
+# Windows
+# Download chromedriver.exe and add to PATH
 
-# For Linux/Mac:
-# sudo mv chromedriver /usr/local/bin/
+# Mac/Linux
+sudo mv chromedriver /usr/local/bin/
+chmod +x /usr/local/bin/chromedriver
+```
+
+**Step 4: For Streamlit Cloud**
+Add to `requirements.txt`:
+```
+selenium
+webdriver-manager
+```
+
+Add to `packages.txt`:
+```
+chromium-browser
+chromium-chromedriver
+```
             """)
         
-        st.warning("⚠️ Without Selenium setup, the app will use fallback mode")
+        st.info("💡 Current mode: " + ("Real Integration" if SELENIUM_AVAILABLE else "Simulation Mode"))
     
     # Create sample data if file doesn't exist
     if not os.path.exists("kp_astro.txt"):
@@ -633,21 +709,8 @@ Mo	2025-07-31	22:16:21	D	Ve	Ma	Mo	Libra	Chitra	4	05°33'20"	-14.52"""
                 st.rerun()
         
         if deepseek_button and query_input.strip():
-            with st.spinner("🤖 Connecting to DeepSeek AI..."):
-                try:
-                    success, response = query_deepseek_ai(query_input, kp_data)
-                except ImportError:
-                    st.error("❌ Selenium not installed. Please install it using: pip install selenium")
-                    st.info("📥 To enable real DeepSeek integration, you need to:")
-                    st.code("""
-pip install selenium
-# Download ChromeDriver from https://chromedriver.chromium.org/
-# Add ChromeDriver to your PATH
-                    """)
-                    success, response = query_deepseek_ai_fallback(query_input, kp_data)
-                except Exception as e:
-                    st.error(f"❌ Error connecting to DeepSeek: {str(e)}")
-                    success, response = query_deepseek_ai_fallback(query_input, kp_data)
+            with st.spinner("🤖 Processing query..."):
+                success, response = query_deepseek_ai(query_input, kp_data)
                 
                 if success:
                     st.subheader("🤖 DeepSeek AI Response")
@@ -662,7 +725,8 @@ pip install selenium
                             st.error(telegram_msg)
                 else:
                     st.error(response)
-                    st.info("💡 For full functionality, please ensure Selenium and ChromeDriver are properly installed.")
+                    if not SELENIUM_AVAILABLE:
+                        st.info("💡 Install Selenium for real DeepSeek integration (see sidebar)")
         elif deepseek_button and not query_input.strip():
             st.warning("⚠️ Please enter a query before searching")
     
