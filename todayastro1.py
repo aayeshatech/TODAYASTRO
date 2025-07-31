@@ -16,22 +16,7 @@ def load_astro_data():
         return pd.DataFrame()
 
 def search_deepseek(query):
-    """
-    Simulate DeepSeek AI search - Replace this with actual DeepSeek API call
-    Since DeepSeek API details aren't provided, this is a placeholder
-    """
     try:
-        # This is a placeholder - replace with actual DeepSeek API endpoint
-        # For demonstration, I'm using a mock response
-        
-        mock_response = {
-            "query": query,
-            "response": f"DeepSeek AI Analysis for '{query}':\n\nBased on the astrological data provided, here are the key insights:\n\n1. Planetary Movements: The query relates to planetary positions and their influences.\n2. Astrological Significance: The positions indicate specific cosmic energies.\n3. Timing: The dates and times are crucial for accurate predictions.\n4. Recommendations: Consider the planetary aspects for decision making.\n\nNote: This is a simulated response. Please integrate with actual DeepSeek API for real results.",
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        # Uncomment and modify this section when you have actual DeepSeek API access
-        """
         headers = {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer YOUR_DEEPSEEK_API_KEY'
@@ -42,21 +27,21 @@ def search_deepseek(query):
             'context': 'astrological_data'
         }
         
-        response = requests.post('https://chat.deepseek.com/api/chat', 
-                               headers=headers, 
-                               json=payload, 
-                               timeout=30)
+        response = requests.post(
+            'https://chat.deepseek.com/api/chat', 
+            headers=headers, 
+            json=payload, 
+            timeout=30
+        )
         
         if response.status_code == 200:
             return response.json()
         else:
             return {"error": f"API Error: {response.status_code}"}
-        """
-        
-        return mock_response
-        
+            
     except Exception as e:
         return {"error": f"Error connecting to DeepSeek: {str(e)}"}
+
 
 @app.route('/')
 def index():
