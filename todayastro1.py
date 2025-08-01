@@ -18,8 +18,7 @@ from typing import Dict, List, Optional, Tuple
 # === Configuration ===
 class Config:
     # Telegram
-    BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
-')
+    BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk')
     CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '-1002840229810')
     
     # TradingView
@@ -101,7 +100,7 @@ def check_aspects(planets: Dict, market_open: bool) -> List[Dict]:
             if None in (p1, p2):
                 continue
 
-            angle = abs((p1[0] - p2[0]) % 360
+            angle = abs((p1[0] - p2[0]) % 360)
             angle = min(angle, 360 - angle)
             orb = aspect['orb'] - (Config.ORB_REDUCTION_DURING_MARKET_HOURS if market_open else 0)
             
