@@ -6,24 +6,23 @@ Astro Trading Alerts Bot (Basic Version)
 """
 
 import swisseph as swe
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 import pytz
 import requests
 import logging
-import os
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 # ===== BOT CONFIGURATION =====
 class Config:
-    # Telegram Configuration (SECURE THESE CREDENTIALS)
+    # Telegram Configuration
     BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
     CHAT_ID = '-1002840229810'
     
     # Astrological Configuration
-    EPHE_PATH = '/usr/share/ephe'  # Ephemeris files path
-    CHECK_INTERVAL = 60  # Check every 60 seconds
-    ORB_REDUCTION_DURING_MARKET_HOURS = 0.3  # Tighter orbs during market hours
+    EPHE_PATH = '/usr/share/ephe'
+    CHECK_INTERVAL = 60
+    ORB_REDUCTION_DURING_MARKET_HOURS = 0.3
 
 # ===== INITIALIZATION =====
 logging.basicConfig(
@@ -58,7 +57,6 @@ ASPECTS = [
     {'from': 'Rahu', 'to': 'Ketu', 'angle': 180, 'signal': '⚡ MARKET TURNING POINT', 'orb': 0.5}
 ]
 
-# ===== CORE FUNCTIONS =====
 def get_current_ist() -> datetime:
     """Get current Indian Standard Time"""
     return datetime.now(pytz.timezone('Asia/Kolkata')).replace(microsecond=0)
@@ -72,7 +70,7 @@ def calculate_planet_positions(jd: float) -> Dict[str, Tuple[float, float]]:
                 rahu_pos = swe.calc_ut(jd, PLANETS['Rahu'])[0][0]
                 positions['Ketu'] = ((rahu_pos + 180) % 360, 0)
             else:
-                positions[name] = swe.calc_ut(jd, pid)[0][:2]  # longitude and latitude
+                positions[name] = swe.calc_ut(jd, pid)[0][:2]
         return positions
     except Exception as e:
         logger.error(f"Planet calculation failed: {str(e)}")
@@ -128,28 +126,26 @@ def send_telegram_alert(message: str) -> bool:
         return False
 
 def is_market_open() -> bool:
-    """Check if Indian stock market is open (Mon-Fri 9:15-15:30 IST)"""
+    """Check if Indian stock market is open"""
     now = get_current_ist()
-    if now.weekday() >= 5:  # Weekend
+    if now.weekday() >= 5:
         return False
     market_open = now.replace(hour=9, minute=15, second=0)
     market_close = now.replace(hour=15, minute=30, second=0)
     return market_open <= now <= market_close
 
 def generate_alert_message(planets: Dict, aspects: List) -> str:
-    """Generate formatted alert message with emojis"""
+    """Generate formatted alert message"""
     lines = [
         "✨ <b>ASTRO TRADING ALERT</b> ✨",
         f"⏰ {get_current_ist().strftime('%Y-%m-%d %H:%M:%S %Z')}",
         f"\n📊 <b>Market Status</b>: {'OPEN' if is_market_open() else 'CLOSED'}"
     ]
     
-    # Add planetary positions
     lines.extend(["\n🪐 <b>Planetary Positions</b>"])
     for planet, pos in planets.items():
         lines.append(f"{planet.ljust(8)}: {pos[0]:7.2f}°")
     
-    # Add aspects
     if aspects:
         lines.extend(["\n🔮 <b>Active Aspects</b>"])
         for aspect in aspects:
@@ -162,7 +158,6 @@ def generate_alert_message(planets: Dict, aspects: List) -> str:
     else:
         lines.append("\n🔍 No significant aspects found")
     
-    # Add trading recommendations
     strong_signals = [a for a in aspects if a['deviation'] < 0.5]
     if strong_signals:
         lines.extend(["\n💡 <b>Trading Advice</b>"])
@@ -175,7 +170,6 @@ def generate_alert_message(planets: Dict, aspects: List) -> str:
     
     return "\n".join(lines)
 
-# ===== MAIN EXECUTION =====
 def main():
     swe.set_ephe_path(Config.EPHE_PATH)
     logger.info("Astro Trading Bot started")
@@ -185,8 +179,6 @@ def main():
             try:
                 current_time = get_current_ist()
                 market_status = is_market_open()
-                
-                # Calculate Julian day for astronomical calculations
                 jd = swe.julday(
                     current_time.year,
                     current_time.month,
@@ -194,34 +186,24 @@ def main():
                     current_time.hour + current_time.minute/60
                 )
                 
-                # Get planetary positions
                 planet_positions = calculate_planet_positions(jd)
                 if not planet_positions:
-                    logger.warning("Failed to get planet positions")
                     time.sleep(Config.CHECK_INTERVAL)
                     continue
                 
-                # Detect aspects
                 active_aspects = detect_aspects(planet_positions, market_status)
                 
-                # Generate and send alert if aspects found
                 if active_aspects:
-                    alert_message = generate_alert_message(
-                        planet_positions,
-                        active_aspects
-                    )
+                    alert_message = generate_alert_message(planet_positions, active_aspects)
                     if not send_telegram_alert(alert_message):
                         logger.warning("Failed to send Telegram alert")
                 
-                # Sleep until next check
-                sleep_time = Config.CHECK_INTERVAL - (time.time() % Config.CHECK_INTERVAL)
-                time.sleep(sleep_time)
+                time.sleep(Config.CHECK_INTERVAL - (time.time() % Config.CHECK_INTERVAL))
                 
             except KeyboardInterrupt:
-                logger.info("Bot stopped by user")
                 break
             except Exception as e:
-                logger.error(f"Unexpected error: {str(e)}")
+                logger.error(f"Error: {str(e)}")
                 time.sleep(60)
                 
     finally:
