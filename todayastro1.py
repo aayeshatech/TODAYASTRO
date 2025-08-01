@@ -35,19 +35,6 @@ class Config:
     CHECK_INTERVAL = 60  # Check every 60 seconds
     ORB_REDUCTION_DURING_MARKET_HOURS = 0.3  # Tighter orbs during market hours
 
-# ... [rest of the code remains exactly the same]
-    SYMBOLS = {
-        "NIFTY": "NSE:NIFTY50",
-        "BANKNIFTY": "NSE:BANKNIFTY", 
-        "GOLD": "MCX:GOLD"
-    }
-    API_KEY = os.getenv('TRADINGVIEW_API_KEY', 'your_api_key_here')
-    
-    # Astrological Configuration
-    EPHE_PATH = '/usr/share/ephe'  # Ephemeris files path
-    CHECK_INTERVAL = 60  # Check every 60 seconds
-    ORB_REDUCTION_DURING_MARKET_HOURS = 0.3  # Tighter orbs during market hours
-
 # ===== INITIALIZATION =====
 logging.basicConfig(
     level=logging.INFO,
