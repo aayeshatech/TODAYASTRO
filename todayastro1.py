@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Astro Trading Alerts Bot - todayastro1.py
-Monitors planetary aspects and sends trading alerts via Telegram
+Enhanced Astro Trading Alerts Bot
+- Planetary aspect detection
+- TradingView price integration
+- Visual alert system
 """
 
 import swisseph as swe
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import pytz
 import requests
@@ -15,9 +17,21 @@ from typing import Dict, List, Optional, Tuple
 
 # === Configuration ===
 class Config:
-    # Load from environment variables with fallback
-    BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk')
+    # Telegram
+    BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
+')
     CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '-1002840229810')
+    
+    # TradingView
+    TRADINGVIEW_API = "https://pro-api.tradingview.com"
+    SYMBOLS = {
+        "NIFTY": "NSE:NIFTY50", 
+        "BANKNIFTY": "NSE:BANKNIFTY",
+        "GOLD": "MCX:GOLD"
+    }
+    API_KEY = os.getenv('TRADINGVIEW_API_KEY', 'your_tv_key')
+    
+    # Astro
     EPHE_PATH = os.getenv('EPHEMERIS_PATH', '/usr/share/ephe')
     CHECK_INTERVAL = 60  # seconds
     ORB_REDUCTION_DURING_MARKET_HOURS = 0.3
@@ -47,7 +61,6 @@ PLANET_IDS = {
 }
 
 ASPECTS = [
-    # Format: {'from': planet, 'to': planet, 'angle': degrees, 'signal': name, 'orb': degrees}
     {'from': 'Jupiter', 'to': 'Sun', 'angle': 120, 'signal': 'STRONG BULLISH', 'orb': 1.5},
     {'from': 'Venus', 'to': 'Moon', 'angle': 0, 'signal': 'BULLISH', 'orb': 1.2},
     {'from': 'Saturn', 'to': 'Mars', 'angle': 90, 'signal': 'STRONG BEARISH', 'orb': 1.5},
@@ -76,7 +89,7 @@ def get_planetary_positions(jd: float) -> Optional[Dict[str, List[float]]]:
         logger.error(f"Planetary calculation error: {e}")
         return None
 
-def check_aspects(planets: Dict[str, List[float]], market_open: bool) -> List[Dict]:
+def check_aspects(planets: Dict, market_open: bool) -> List[Dict]:
     """Check for active aspects with dynamic orbs"""
     active = []
     if not planets:
@@ -88,7 +101,7 @@ def check_aspects(planets: Dict[str, List[float]], market_open: bool) -> List[Di
             if None in (p1, p2):
                 continue
 
-            angle = abs((p1[0] - p2[0]) % 360)
+            angle = abs((p1[0] - p2[0]) % 360
             angle = min(angle, 360 - angle)
             orb = aspect['orb'] - (Config.ORB_REDUCTION_DURING_MARKET_HOURS if market_open else 0)
             
@@ -102,6 +115,24 @@ def check_aspects(planets: Dict[str, List[float]], market_open: bool) -> List[Di
         except Exception as e:
             logger.error(f"Aspect check error: {e}")
     return active
+
+def get_tradingview_price(symbol: str) -> Optional[Dict]:
+    """Fetch current price data from TradingView"""
+    url = f"{Config.TRADINGVIEW_API}/quote"
+    headers = {"Authorization": f"Bearer {Config.API_KEY}"}
+    params = {"symbols": Config.SYMBOLS[symbol]}
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=5)
+        data = response.json()['data'][0]
+        return {
+            'price': data['last_price'],
+            'change': data['change'],
+            'change_pct': data['change_percent']
+        }
+    except Exception as e:
+        logger.error(f"TradingView API error: {e}")
+        return None
 
 def send_alert(message: str) -> bool:
     """Send Telegram alert with retry logic"""
@@ -130,38 +161,61 @@ def is_market_open() -> bool:
     market_close = now.replace(hour=15, minute=30, second=0)
     return market_open <= now <= market_close
 
-def format_report(planets: Dict[str, List[float]], aspects: List[Dict]) -> str:
-    """Generate formatted alert message"""
+def format_enhanced_alert(planets: Dict, aspects: List) -> str:
+    """Generate enriched trading alert with TradingView data"""
     lines = [
-        "✨ <b>Astro Trading Alert</b> ✨",
+        "✨ <b>ASTRO TRADING SIGNAL</b> ✨",
         f"🕒 {now_ist().strftime('%Y-%m-%d %H:%M:%S %Z')}",
-        "",
-        "🪐 <b>Planetary Positions</b>"
+        "\n🌌 <b>Market Snapshot</b>"
     ]
     
-    # Add planet positions
-    lines.extend(f"{p.ljust(8)}: {pos[0]:7.2f}°" for p, pos in planets.items())
+    # Add price data
+    prices = {}
+    for sym in Config.SYMBOLS:
+        if price_data := get_tradingview_price(sym):
+            prices[sym] = price_data
+            lines.append(
+                f"{sym}: {price_data['price']} | "
+                f"{'🔺' if price_data['change'] >=0 else '🔻'} "
+                f"{abs(price_data['change_pct']):.2f}%"
+            )
+    
+    # Add planetary positions
+    lines.extend(["\n🪐 <b>Planetary Positions</b>"])
+    for p, pos in planets.items():
+        lines.append(f"{p.ljust(8)}: {pos[0]:7.2f}°")
     
     # Add aspects
-    lines.extend(["", "🔮 <b>Active Aspects</b>"])
+    lines.extend(["\n🔮 <b>Active Aspects</b>"])
     if aspects:
         for a in sorted(aspects, key=lambda x: x['deviation']):
             aspect = a['aspect']
+            emoji = "🟢" if "BULL" in aspect['signal'] else "🔴" if "BEAR" in aspect['signal'] else "🟡"
+            
             lines.extend([
-                f"▫️ <b>{aspect['signal']}</b>",
-                f"{aspect['from']} → {aspect['to']} ({aspect['angle']}°)",
-                f"Angle: {a['actual']:.2f}° (Dev: {a['deviation']:.2f}°)",
-                ""
+                f"\n{emoji} <b>{aspect['signal']}</b> {emoji}",
+                f"│ {aspect['from']} → {aspect['to']} ({aspect['angle']}°)",
+                f"│ Angle: {a['actual']:.2f}° (Dev: {a['deviation']:.2f}°)",
+                f"╰ Strong for: Next {max(1, 24 - int(a['deviation']*10))} hours"
             ])
     else:
         lines.append("No significant aspects")
+    
+    # Add trading advice
+    if any("TURNING POINT" in a['aspect']['signal'] for a in aspects):
+        lines.extend([
+            "\n⚠️ <b>Trading Advice</b>",
+            "- High probability reversal zone",
+            "- Reduce position sizes",
+            "- Wait for confirmation candles"
+        ])
     
     return "\n".join(lines)
 
 # === Main Execution ===
 def main():
     swe.set_ephe_path(Config.EPHE_PATH)
-    logger.info("Astro Alerts Bot started")
+    logger.info("Enhanced Astro Alerts Bot started")
     
     try:
         while True:
@@ -169,15 +223,14 @@ def main():
                 current_time = now_ist()
                 market_open = is_market_open()
                 jd = swe.julday(current_time.year, current_time.month, 
-                               current_time.day, current_time.hour + current_time.minute/60)
+                              current_time.day, current_time.hour + current_time.minute/60)
                 
                 if planets := get_planetary_positions(jd):
                     if aspects := check_aspects(planets, market_open):
-                        report = format_report(planets, aspects)
+                        report = format_enhanced_alert(planets, aspects)
                         if not send_alert(report):
                             logger.warning("Failed to send alert")
                 
-                # Sleep until next minute
                 time.sleep(Config.CHECK_INTERVAL - time.time() % Config.CHECK_INTERVAL)
                 
             except KeyboardInterrupt:
