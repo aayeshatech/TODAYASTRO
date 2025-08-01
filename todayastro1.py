@@ -23,6 +23,7 @@ class Config:
     EPHE_PATH = '/usr/share/ephe'
     CHECK_INTERVAL = 60
     ORB_REDUCTION_DURING_MARKET_HOURS = 0.3
+
 # ===== INITIALIZATION =====
 logging.basicConfig(
     level=logging.INFO,
