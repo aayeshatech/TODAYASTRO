@@ -20,7 +20,7 @@ class Config:
     # Telegram Configuration (SECURE THESE CREDENTIALS)
     BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
     CHAT_ID = '-1002840229810'
-    
+     
     # TradingView Configuration
     TRADINGVIEW_API = "https://pro-api.tradingview.com"
     SYMBOLS = {
