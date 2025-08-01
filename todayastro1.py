@@ -1,27 +1,14 @@
 #!/usr/bin/env python3
-"""
-Astro Trading Alerts Bot (Basic Version)
-- Planetary aspect detection
-- Telegram alerts
-"""
-
+import streamlit as st
 import swisseph as swe
 from datetime import datetime
-import time
 import pytz
-import requests
 import logging
 from typing import Dict, List, Tuple
 
 # ===== BOT CONFIGURATION =====
 class Config:
-    # Telegram Configuration
-    BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
-    CHAT_ID = '-1002840229810'
-    
-    # Astrological Configuration
-    EPHE_PATH = '/usr/share/ephe'
-    CHECK_INTERVAL = 60
+    EPHE_PATH = '/content/ephe'  # Adjusted for Colab
     ORB_REDUCTION_DURING_MARKET_HOURS = 0.3
 
 # ===== INITIALIZATION =====
@@ -106,25 +93,6 @@ def detect_aspects(planets: Dict, market_hours: bool) -> List[Dict]:
     
     return sorted(active_aspects, key=lambda x: x['deviation'])
 
-def send_telegram_alert(message: str) -> bool:
-    """Send formatted message to Telegram"""
-    try:
-        response = requests.post(
-            f"https://api.telegram.org/bot{Config.BOT_TOKEN}/sendMessage",
-            json={
-                'chat_id': Config.CHAT_ID,
-                'text': message,
-                'parse_mode': 'HTML',
-                'disable_web_page_preview': True
-            },
-            timeout=10
-        )
-        response.raise_for_status()
-        return True
-    except Exception as e:
-        logger.error(f"Telegram alert failed: {str(e)}")
-        return False
-
 def is_market_open() -> bool:
     """Check if Indian stock market is open"""
     now = get_current_ist()
@@ -172,42 +140,25 @@ def generate_alert_message(planets: Dict, aspects: List) -> str:
 
 def main():
     swe.set_ephe_path(Config.EPHE_PATH)
-    logger.info("Astro Trading Bot started")
+    st.title("Astro Trading Alerts")
     
-    try:
-        while True:
-            try:
-                current_time = get_current_ist()
-                market_status = is_market_open()
-                jd = swe.julday(
-                    current_time.year,
-                    current_time.month,
-                    current_time.day,
-                    current_time.hour + current_time.minute/60
-                )
-                
-                planet_positions = calculate_planet_positions(jd)
-                if not planet_positions:
-                    time.sleep(Config.CHECK_INTERVAL)
-                    continue
-                
-                active_aspects = detect_aspects(planet_positions, market_status)
-                
-                if active_aspects:
-                    alert_message = generate_alert_message(planet_positions, active_aspects)
-                    if not send_telegram_alert(alert_message):
-                        logger.warning("Failed to send Telegram alert")
-                
-                time.sleep(Config.CHECK_INTERVAL - (time.time() % Config.CHECK_INTERVAL))
-                
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                logger.error(f"Error: {str(e)}")
-                time.sleep(60)
-                
-    finally:
-        logger.info("Bot shutdown complete")
+    current_time = get_current_ist()
+    market_status = is_market_open()
+    jd = swe.julday(
+        current_time.year,
+        current_time.month,
+        current_time.day,
+        current_time.hour + current_time.minute/60
+    )
+    
+    planet_positions = calculate_planet_positions(jd)
+    if not planet_positions:
+        st.error("Failed to calculate planet positions")
+        return
+    
+    active_aspects = detect_aspects(planet_positions, market_status)
+    alert_message = generate_alert_message(planet_positions, active_aspects)
+    st.markdown(alert_message, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
