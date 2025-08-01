@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple
 class Config:
     # Telegram
     BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk')
-    CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '-1002840229810')
+    CHAT_ID = os.getenv('TELEGRAM_CHAT_ID',  '-1002840229810')
     
     # TradingView
     TRADINGVIEW_API = "https://pro-api.tradingview.com"
@@ -28,7 +28,7 @@ class Config:
         "BANKNIFTY": "NSE:BANKNIFTY",
         "GOLD": "MCX:GOLD"
     }
-    API_KEY = os.getenv('TRADINGVIEW_API_KEY', 'your_tv_key')
+    API_KEY = os.getenv('TRADINGVIEW_API_KEY', 'your_tv_key_here')
     
     # Astro
     EPHE_PATH = os.getenv('EPHEMERIS_PATH', '/usr/share/ephe')
