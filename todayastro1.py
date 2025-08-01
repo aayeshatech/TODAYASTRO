@@ -17,7 +17,7 @@ from typing import Dict, List, Tuple
 class Config:
     # Telegram Configuration
     BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
-    CHAT_ID = '-1002840229810'  # Ensure no extra quotes or characters
+    CHAT_ID = '-1002840229810'
     
     # Astrological Configuration
     EPHE_PATH = '/usr/share/ephe'
