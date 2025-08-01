@@ -13,7 +13,6 @@ import requests
 import logging
 from typing import Dict, List, Tuple
 
-# ===== BOT CONFIGURATION =====
 class Config:
     # Telegram Configuration
     BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
