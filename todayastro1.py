@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Astro Trading Alerts Bot
+Astro Trading Alerts Bot (Basic Version)
 - Planetary aspect detection
-- TradingView integration
 - Telegram alerts
 """
 
@@ -20,15 +19,6 @@ class Config:
     # Telegram Configuration (SECURE THESE CREDENTIALS)
     BOT_TOKEN = '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'
     CHAT_ID = '-1002840229810'
-     
-    # TradingView Configuration
-    TRADINGVIEW_API = "https://pro-api.tradingview.com"
-    SYMBOLS = {
-        "NIFTY": "NSE:NIFTY50",
-        "BANKNIFTY": "NSE:BANKNIFTY", 
-        "GOLD": "MCX:GOLD"
-    }
-    API_KEY = os.getenv('TRADINGVIEW_API_KEY', 'your_api_key_here')
     
     # Astrological Configuration
     EPHE_PATH = '/usr/share/ephe'  # Ephemeris files path
@@ -118,29 +108,6 @@ def detect_aspects(planets: Dict, market_hours: bool) -> List[Dict]:
     
     return sorted(active_aspects, key=lambda x: x['deviation'])
 
-def fetch_market_data() -> Dict[str, Dict]:
-    """Get current market prices from TradingView"""
-    market_data = {}
-    for symbol, tv_symbol in Config.SYMBOLS.items():
-        try:
-            response = requests.get(
-                f"{Config.TRADINGVIEW_API}/quote",
-                headers={"Authorization": f"Bearer {Config.API_KEY}"},
-                params={"symbols": tv_symbol},
-                timeout=5
-            )
-            data = response.json()['data'][0]
-            market_data[symbol] = {
-                'price': data['last_price'],
-                'change': data['change'],
-                'change_pct': data['change_percent']
-            }
-        except Exception as e:
-            logger.error(f"Failed to fetch {symbol} data: {str(e)}")
-            market_data[symbol] = None
-    
-    return market_data
-
 def send_telegram_alert(message: str) -> bool:
     """Send formatted message to Telegram"""
     try:
@@ -169,22 +136,13 @@ def is_market_open() -> bool:
     market_close = now.replace(hour=15, minute=30, second=0)
     return market_open <= now <= market_close
 
-def generate_alert_message(planets: Dict, aspects: List, market_data: Dict) -> str:
+def generate_alert_message(planets: Dict, aspects: List) -> str:
     """Generate formatted alert message with emojis"""
     lines = [
         "✨ <b>ASTRO TRADING ALERT</b> ✨",
         f"⏰ {get_current_ist().strftime('%Y-%m-%d %H:%M:%S %Z')}",
-        "\n📊 <b>Market Data</b>"
+        f"\n📊 <b>Market Status</b>: {'OPEN' if is_market_open() else 'CLOSED'}"
     ]
-    
-    # Add market data
-    for symbol, data in market_data.items():
-        if data:
-            change_emoji = "🟢" if data['change'] >= 0 else "🔴"
-            lines.append(
-                f"{symbol}: {data['price']} | "
-                f"{change_emoji} {abs(data['change_pct']):.2f}%"
-            )
     
     # Add planetary positions
     lines.extend(["\n🪐 <b>Planetary Positions</b>"])
@@ -246,15 +204,11 @@ def main():
                 # Detect aspects
                 active_aspects = detect_aspects(planet_positions, market_status)
                 
-                # Get market data if market is open
-                market_data = fetch_market_data() if market_status else {}
-                
                 # Generate and send alert if aspects found
                 if active_aspects:
                     alert_message = generate_alert_message(
                         planet_positions,
-                        active_aspects,
-                        market_data
+                        active_aspects
                     )
                     if not send_telegram_alert(alert_message):
                         logger.warning("Failed to send Telegram alert")
