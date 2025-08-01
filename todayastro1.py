@@ -11,12 +11,12 @@ import pytz
 import requests
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # === Configuration ===
 class Config:
     # Load from environment variables with fallback
-    BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', ''7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk'')
+    BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7613703350:AAGIvRqgsG_yTcOlFADRSYd_FtoLOPwXDKk')
     CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '-1002840229810')
     EPHE_PATH = os.getenv('EPHEMERIS_PATH', '/usr/share/ephe')
     CHECK_INTERVAL = 60  # seconds
@@ -76,7 +76,7 @@ def get_planetary_positions(jd: float) -> Optional[Dict[str, List[float]]]:
         logger.error(f"Planetary calculation error: {e}")
         return None
 
-def check_aspects(planets: Dict, market_open: bool) -> List[Dict]:
+def check_aspects(planets: Dict[str, List[float]], market_open: bool) -> List[Dict]:
     """Check for active aspects with dynamic orbs"""
     active = []
     if not planets:
@@ -88,7 +88,7 @@ def check_aspects(planets: Dict, market_open: bool) -> List[Dict]:
             if None in (p1, p2):
                 continue
 
-            angle = abs((p1[0] - p2[0]) % 360
+            angle = abs((p1[0] - p2[0]) % 360)
             angle = min(angle, 360 - angle)
             orb = aspect['orb'] - (Config.ORB_REDUCTION_DURING_MARKET_HOURS if market_open else 0)
             
@@ -130,7 +130,7 @@ def is_market_open() -> bool:
     market_close = now.replace(hour=15, minute=30, second=0)
     return market_open <= now <= market_close
 
-def format_report(planets: Dict, aspects: List) -> str:
+def format_report(planets: Dict[str, List[float]], aspects: List[Dict]) -> str:
     """Generate formatted alert message"""
     lines = [
         "✨ <b>Astro Trading Alert</b> ✨",
